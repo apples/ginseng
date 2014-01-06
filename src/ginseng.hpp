@@ -1,0 +1,315 @@
+#include <cstddef>
+#include <algorithm>
+#include <iomanip>
+#include <iostream>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace Ginseng
+{
+
+// Base IDs
+
+using EID = long long; // Entity ID
+using CID = long long; // Component ID
+using TID = long long; // Table ID
+
+// Private Namespace
+
+namespace _detail
+{
+
+// Template Metas
+
+template <typename Base, typename Member, typename T
+    , typename TD = typename ::std::decay<T>::type
+    , bool valid = ::std::is_same<Base, TD>::value
+    , bool is_const = ::std::is_const<T>::value
+    , typename Type = typename ::std::conditional<is_const, const Member, Member>::type
+>
+using MType = typename ::std::enable_if<valid, Type>::type;
+
+// Component Base
+
+class ComponentBase
+{
+  public:
+    virtual ~ComponentBase() = 0;
+    
+    virtual ::std::ostream& debugPrint(::std::ostream& out) const = 0;
+};
+
+ComponentBase::~ComponentBase()
+{}
+
+// Private Types
+
+struct Types
+{
+    // Templates
+    
+    template <typename T, typename H = ::std::hash<T>>
+    using Many = ::std::unordered_set<T, H>;
+
+    template <typename... Ts>
+    using Join = ::std::tuple<Ts...>;
+
+    template <typename K, typename V, typename H = ::std::hash<K>>
+    using Table = ::std::unordered_map<K, V, H>;
+
+    template <typename... Ts>
+    using Result = ::std::vector<::std::tuple<EID, Ts*...>>;
+
+    // Aggregate IDs
+    
+    using CDAT = ComponentBase*;
+    using CTID = Join<CID, TID>;
+
+    using ComponentData = Join<EID,CDAT>;
+    using ComponentList = Table<CID,ComponentData>;
+    using ComponentTable = Join<ComponentList,Many<EID>>;
+    
+    // Aggregate Getters
+
+    template <typename T>
+    static MType<ComponentTable, ComponentList, T>& getList(T& table)
+    {
+        return ::std::get<0>(table);
+    }
+
+    template <typename T>
+    static MType<ComponentTable, Many<EID>, T>& getEIDs(T& table)
+    {
+        return ::std::get<1>(table);
+    }
+
+    template <typename T>
+    static MType<ComponentData, EID, T>& getEID(T& cd)
+    {
+        return ::std::get<0>(cd);
+    }
+
+    template <typename T>
+    static MType<ComponentData, CDAT, T>& getCDAT(T& cd)
+    {
+        return ::std::get<1>(cd);
+    }
+
+    template <typename T>
+    static MType<CTID, CID, T>& getCID(T& cidtid)
+    {
+        return ::std::get<0>(cidtid);
+    }
+
+    template <typename T>
+    static MType<CTID, TID, T>& getTID(T& cidtid)
+    {
+        return ::std::get<1>(cidtid);
+    }
+
+    // Custom Hashes
+
+    struct CTIDHash
+    {
+        ::std::size_t operator()(const CTID& cidtid) const&
+        {
+            return ::std::hash<CID>{}(getCID(cidtid));
+        }
+    };
+};
+
+} // namespace _detail
+
+// Component CRTP
+
+template <typename Child>
+class Component
+    : public _detail::ComponentBase
+{
+    friend class Database;
+    static TID tid;
+  public:
+    virtual ::std::ostream& debugPrint(::std::ostream& out) const override
+    {
+        out << "[ No debug message for TID " << tid << ". ]";
+        return out;
+    }
+};
+
+template <typename Child>
+TID Component<Child>::tid = -1;
+
+// Main Database engine
+
+class Database final
+    : private _detail::Types
+{
+    Table<EID,Many<CTID, CTIDHash>> entities;
+    Table<TID,ComponentTable> components;
+    
+    struct
+    {
+        EID eid = 0;
+        TID tid = 0;
+        CID cid = 0;
+    } uidGen;
+    
+    EID createEntityID()
+    {
+        return ++uidGen.eid;
+    }
+    
+    TID createTableID()
+    {
+        return ++uidGen.tid;
+    }
+    
+    CID createCTID()
+    {
+        return ++uidGen.cid;
+    }
+    
+  public:
+  
+    EID newEntity()
+    {
+        return createEntityID();
+    }
+    
+    template <typename T>
+    TID registerComponent()
+    {
+        if (T::tid != -1) throw; //TODO
+        T::tid = createTableID();
+        return T::tid;
+    }
+    
+    template <typename T>
+    T* newComponent(EID ent)
+    {
+        if (T::tid == -1) throw; //TODO
+        
+        CID cid = createCTID();
+        
+        T* rval = new T; // TODO
+        
+        entities[ent].insert(::std::make_tuple(cid, T::tid));
+        
+        ComponentTable& table = components[T::tid];
+        {
+            ComponentList& list = getList(table);
+            {
+                ComponentData& data = list[cid];
+                getCDAT(data) = rval;
+                getEID(data) = ent;
+            }
+        }
+        {
+            Many<EID>& eset = getEIDs(table);
+            eset.insert(ent);
+        }
+        
+        return rval;
+    }
+    
+    enum class Selector
+    {
+        INSPECT
+        , MERGE
+    };
+    
+    template <typename T, typename... Us>
+    Result<T, Us...> getEntities(const Selector method = Selector::INSPECT) const
+    {
+        Result<T> rval;
+        
+        switch (method)
+        {
+            case Selector::INSPECT:
+            {
+                const ComponentTable& table = components.at(T::tid);
+                const ComponentList& list = getList(table);
+                
+                for (auto&& p : list)
+                {
+                    const ComponentData& cd = p.second;
+                    EID eid = getEID(cd);
+                    T* data = static_cast<T*>(getCDAT(cd));
+                    rval.push_back(::std::make_tuple(eid, data));
+                }
+                
+                //TODO
+                
+            break;}
+            
+            case Selector::MERGE:
+            {
+                throw; //TODO
+            break;}
+            
+            default: throw; // TODO
+        }
+        
+        return rval;
+    }
+    
+    ::std::ostream& debugPrint(::std::ostream& out) const&
+    {
+        out << "Entity count: " << entities.size() << ::std::endl;
+        out << "Entity total: " << uidGen.eid << ::std::endl;
+        for (auto&& p : entities)
+        {
+            EID eid = p.first;
+            ::std::vector<CTID> cids(begin(p.second), end(p.second));
+            ::std::sort(begin(cids), end(cids));
+            
+            out << ::std::setw(3) << eid;
+            for (auto&& cid : cids)
+            {
+                out << ' ';
+                out << ::std::setw(3) << getCID(cid);
+                out << ':';
+                out << ::std::setw(2) << ::std::left << getTID(cid);
+                out << ::std::right;
+            }
+            out << ::std::endl;
+        }
+        
+        out << "Components registered: " << uidGen.tid << ::std::endl;
+        out << "Components used:       " << components.size() << ::std::endl;
+        for (auto&& p : components)
+        {
+            TID tid = p.first;
+            const ComponentTable& table = p.second;
+            const ComponentList& list = getList(table);
+            const Many<EID>& eidlist = getEIDs(table);
+            
+            ::std::vector<EID> eids (begin(eidlist), end(eidlist));
+            ::std::sort(begin(eids), end(eids));
+            
+            out << "Component " << tid << ":" << ::std::endl;
+            out << "    Entities:";
+            for (auto&& eid : eids) out << ' ' << ::std::setw(5) << eid;
+            out << ::std::endl;
+            for (auto&& q : list)
+            {
+                CID cid = q.first;
+                const ComponentData& data = q.second;
+                out << "    ";
+                out << ::std::setw(5) << ::std::left << cid;
+                out << ::std::right;
+                out << ' ' << ::std::setw(5) << getEID(data);
+                out << ' ';
+                getCDAT(data)->debugPrint(out);
+                out << ::std::endl;
+            }
+        }
+        
+        return out;
+    }
+};
+
+} // namespace Ginseng
