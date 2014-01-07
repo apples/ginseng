@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -71,7 +72,7 @@ struct Types
     using CDAT = ComponentBase*;
     using CTID = Join<CID, TID>;
 
-    using ComponentData = Join<EID,CDAT>;
+    using ComponentData = Join<EID,::std::unique_ptr<ComponentBase>>;
     using ComponentList = Table<CID,ComponentData>;
     using ComponentTable = Join<ComponentList,Many<EID>>;
     
@@ -96,9 +97,9 @@ struct Types
     }
 
     template <typename T>
-    static MType<ComponentData, CDAT, T>& getCDAT(T& cd)
+    static MType<ComponentData, CDAT, T> getCDAT(T& cd)
     {
-        return ::std::get<1>(cd);
+        return ::std::get<1>(cd).get();
     }
 
     template <typename T>
@@ -175,61 +176,6 @@ class Database final
         return ++uidGen.cid;
     }
     
-  public:
-  
-    EID newEntity()
-    {
-        return createEntityID();
-    }
-    
-    template <typename T>
-    TID registerComponent()
-    {
-        if (T::tid != -1) throw; //TODO
-        T::tid = createTableID();
-        return T::tid;
-    }
-    
-    template <typename T>
-    T* newComponent(EID ent)
-    {
-        if (T::tid == -1) throw; //TODO
-        
-        CID cid = createCTID();
-        
-        T* rval = new T; // TODO
-        
-        entities[ent][T::tid] = cid;
-        
-        ComponentTable& table = components[T::tid];
-        {
-            ComponentList& list = getList(table);
-            {
-                ComponentData& data = list[cid];
-                getCDAT(data) = rval;
-                getEID(data) = ent;
-            }
-        }
-        {
-            Many<EID>& eset = getEIDs(table);
-            eset.insert(ent);
-        }
-        
-        return rval;
-    }
-    
-    template <typename T>
-    T* getComponent(CID cid) const
-    {
-        return static_cast<T*>(getCDAT(getList(components.at(T::tid)).at(cid)));
-    }
-    
-    enum class Selector
-    {
-        INSPECT
-        , MERGE
-    };
-    
     template <int N = 2, typename T>
     typename ::std::enable_if<
         (N >= ::std::tuple_size<T>::value) ,
@@ -259,45 +205,97 @@ class Database final
     }
     
     template <typename T, typename... Us>
-    Result<T, Us...> getEntities(const Selector method = Selector::INSPECT) const
+    Result<T, Us...> select_inspect() const
     {
         Result<T, Us...> rval;
         
-        switch (method)
+        const ComponentTable& table = components.at(T::tid);
+        const ComponentList& list = getList(table);
+        
+        for (auto&& p : list)
         {
-            case Selector::INSPECT:
-            {
-                const ComponentTable& table = components.at(T::tid);
-                const ComponentList& list = getList(table);
-                
-                for (auto&& p : list)
-                {
-                    const ComponentData& cd = p.second;
-                    EID eid = getEID(cd);
-                    T* data = static_cast<T*>(getCDAT(cd));
-                    
-                    RElement<T, Us...> ele;
-                    
-                    ::std::get<0>(ele) = eid;
-                    ::std::get<1>(ele) = data;
-                    
-                    if (fill_inspect(ele))
-                    {
-                        rval.emplace_back(::std::move(ele));
-                    }
-                }
-                
-            break;}
+            const ComponentData& cd = p.second;
+            EID eid = getEID(cd);
+            T* data = static_cast<T*>(getCDAT(cd));
             
-            case Selector::MERGE:
-            {
-                throw; //TODO
-            break;}
+            RElement<T, Us...> ele;
             
-            default: throw; // TODO
+            ::std::get<0>(ele) = eid;
+            ::std::get<1>(ele) = data;
+            
+            if (fill_inspect(ele))
+            {
+                rval.emplace_back(::std::move(ele));
+            }
         }
         
         return rval;
+    }
+    
+  public:
+  
+    enum class Selector
+    {
+        INSPECT
+    };
+    
+    EID newEntity()
+    {
+        return createEntityID();
+    }
+    
+    template <typename T>
+    TID registerComponent()
+    {
+        if (T::tid != -1) throw; //TODO
+        T::tid = createTableID();
+        return T::tid;
+    }
+    
+    template <typename T>
+    T* newComponent(EID ent)
+    {
+        if (T::tid == -1) throw; //TODO
+        
+        CID cid = createCTID();
+        
+        ::std::unique_ptr<_detail::ComponentBase> ptr (new T);
+        T* rval = static_cast<T*>(ptr.get());
+        
+        entities[ent][T::tid] = cid;
+        
+        ComponentTable& table = components[T::tid];
+        {
+            ComponentList& list = getList(table);
+            {
+                ComponentData dat { ent, ::std::move(ptr) };
+                list.insert(::std::make_pair(cid, ::std::move(dat)));
+            }
+        }
+        {
+            Many<EID>& eset = getEIDs(table);
+            eset.insert(ent);
+        }
+        
+        return rval;
+    }
+    
+    template <typename T>
+    T* getComponent(CID cid) const
+    {
+        return static_cast<T*>(getCDAT(getList(components.at(T::tid)).at(cid)));
+    }
+    
+    template <typename... Ts>
+    Result<Ts...> getEntities(const Selector method = Selector::INSPECT) const
+    {
+        switch (method)
+        {
+            case Selector::INSPECT:
+                return select_inspect<Ts...>();
+        }
+        
+        throw; // TODO
     }
     
     ::std::ostream& debugPrint(::std::ostream& out) const&
