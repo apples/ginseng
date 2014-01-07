@@ -57,5 +57,10 @@ int main()
         cout << get<1>(i)->val << endl;
     }
     
+    for (auto&& i : el.getEntities<Alpha,Beta>())
+    {
+        cout << get<1>(i)->val << get<2>(i)->val << endl;
+    }
+    
     el.debugPrint(cout);
 }

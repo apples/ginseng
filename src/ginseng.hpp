@@ -62,6 +62,9 @@ struct Types
 
     template <typename... Ts>
     using Result = ::std::vector<::std::tuple<EID, Ts*...>>;
+    
+    template <typename... Ts>
+    using RElement = typename Result<Ts...>::value_type;
 
     // Aggregate IDs
     
@@ -147,7 +150,7 @@ TID Component<Child>::tid = -1;
 class Database final
     : private _detail::Types
 {
-    Table<EID,Many<CTID, CTIDHash>> entities;
+    Table<EID,Table<TID,CID>> entities;
     Table<TID,ComponentTable> components;
     
     struct
@@ -196,7 +199,7 @@ class Database final
         
         T* rval = new T; // TODO
         
-        entities[ent].insert(::std::make_tuple(cid, T::tid));
+        entities[ent][T::tid] = cid;
         
         ComponentTable& table = components[T::tid];
         {
@@ -215,16 +218,50 @@ class Database final
         return rval;
     }
     
+    template <typename T>
+    T* getComponent(CID cid) const
+    {
+        return static_cast<T*>(getCDAT(getList(components.at(T::tid)).at(cid)));
+    }
+    
     enum class Selector
     {
         INSPECT
         , MERGE
     };
     
+    template <int N = 2, typename T>
+    typename ::std::enable_if<
+        (N >= ::std::tuple_size<T>::value) ,
+    bool>::type fill_inspect(T& ele) const
+    {
+        return true;
+    }
+    
+    template <int N = 2, typename T>
+    typename ::std::enable_if<
+        (N < ::std::tuple_size<T>::value) ,
+    bool>::type fill_inspect(T& ele) const
+    {
+        using PtrType = typename ::std::tuple_element<N, T>::type;
+        using Type = typename ::std::remove_pointer<PtrType>::type;
+        
+        EID eid = ::std::get<0>(ele);
+        const Table<TID,CID>& tcids = entities.at(eid);
+        
+        auto iter = tcids.find(Type::tid);
+        
+        if (iter == end(tcids)) return false;
+        
+        ::std::get<N>(ele) = getComponent<Type>(iter->second);
+        
+        return fill_inspect<N+1>(ele);
+    }
+    
     template <typename T, typename... Us>
     Result<T, Us...> getEntities(const Selector method = Selector::INSPECT) const
     {
-        Result<T> rval;
+        Result<T, Us...> rval;
         
         switch (method)
         {
@@ -238,10 +275,17 @@ class Database final
                     const ComponentData& cd = p.second;
                     EID eid = getEID(cd);
                     T* data = static_cast<T*>(getCDAT(cd));
-                    rval.push_back(::std::make_tuple(eid, data));
+                    
+                    RElement<T, Us...> ele;
+                    
+                    ::std::get<0>(ele) = eid;
+                    ::std::get<1>(ele) = data;
+                    
+                    if (fill_inspect(ele))
+                    {
+                        rval.emplace_back(::std::move(ele));
+                    }
                 }
-                
-                //TODO
                 
             break;}
             
@@ -263,16 +307,15 @@ class Database final
         for (auto&& p : entities)
         {
             EID eid = p.first;
-            ::std::vector<CTID> cids(begin(p.second), end(p.second));
-            ::std::sort(begin(cids), end(cids));
+            auto&& cids = p.second;
             
             out << ::std::setw(3) << eid;
             for (auto&& cid : cids)
             {
                 out << ' ';
-                out << ::std::setw(3) << getCID(cid);
+                out << ::std::setw(3) << cid.first;
                 out << ':';
-                out << ::std::setw(2) << ::std::left << getTID(cid);
+                out << ::std::setw(2) << ::std::left << cid.second;
                 out << ::std::right;
             }
             out << ::std::endl;
