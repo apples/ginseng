@@ -244,6 +244,34 @@ class Database final
         return createEntityID();
     }
     
+    void eraseEntity(EID ent)
+    {
+        auto eiter = entities.find(ent);
+        
+        if (eiter == end(entities)) throw; // TODO
+        
+        Table<TID,CID>& comps = eiter->second;
+        
+        for (auto&& p : comps)
+        {
+            ComponentTable& tab = components.at(p.first);
+            ComponentList& list = getList(tab);
+            Many<EID>& eids = getEIDs(tab);
+            
+            {
+                auto citer = list.find(p.second);
+                list.erase(citer);
+            }
+            
+            {
+                auto liter = eids.find(ent);
+                eids.erase(liter);
+            }
+        }
+        
+        entities.erase(eiter);
+    }
+    
     template <typename T>
     TID registerComponent()
     {

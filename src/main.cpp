@@ -63,4 +63,10 @@ int main()
     }
     
     el.debugPrint(cout);
+    
+    el.eraseEntity(e2);
+    
+    cout << "*****" << endl;
+    
+    el.debugPrint(cout);
 }
