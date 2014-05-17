@@ -465,6 +465,10 @@ class Database
         
         class ComID; // forward declaration needed for EntID
         
+        /*! Entity ID
+         * 
+         * A handle to an Entity. Very lightweight.
+         */
         class EntID
         {
             friend class Database;
@@ -524,6 +528,10 @@ class Database
                 }
         };
 
+        /*! Component ID
+         * 
+         * A handle to a type-erased component. Very lightweight.
+         */
         class ComID
         {
             friend class Database;
