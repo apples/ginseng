@@ -498,7 +498,7 @@ class Database
                     
                     cid.eid = *this;
                     
-                    if (pos->getGUID() == guid)
+                    if (pos != end(comvec) && pos->getGUID() == guid)
                     {
                         cid.iter = pos;
                         ptr = &cid.template cast<T>();
