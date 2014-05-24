@@ -1,3 +1,6 @@
+#ifndef GINSENG_GINSENG_HPP
+#define GINSENG_GINSENG_HPP
+
 #include <algorithm>
 #include <type_traits>
 #include <vector>
@@ -164,23 +167,16 @@ namespace _detail {
 
 // Component
     
-    class ComponentBase
-    {
-        ComponentBase(ComponentBase const&) = delete;
-        ComponentBase(ComponentBase &&) noexcept = delete;
-        ComponentBase& operator=(ComponentBase const&) = delete;
-        ComponentBase& operator=(ComponentBase &&) noexcept = delete;
-
-        protected:
-            ComponentBase() = default;
-            ~ComponentBase() = default;
-    };
-    
     template <typename T>
-    class Component : public ComponentBase
+    class Component
     {
         T val;
         
+        Component(Component const&) = delete;
+        Component(Component &&) noexcept = delete;
+        Component& operator=(Component const&) = delete;
+        Component& operator=(Component &&) noexcept = delete;
+
         public:
         
             Component(T t)
@@ -192,6 +188,8 @@ namespace _detail {
                 return val;
             }
     };
+    
+    using AbstractComponent = void;
 
 // GUIDPair
 
@@ -236,7 +234,7 @@ namespace _detail {
         template <template <typename> class AllocatorT>
         friend class Database;
         
-        using ComponentData = GUIDPair<shared_ptr<ComponentBase>>;
+        using ComponentData = GUIDPair<shared_ptr<AbstractComponent>>;
         using ComponentVec = vector<ComponentData>;
         
         ComponentVec components;
@@ -557,6 +555,17 @@ class Database
                     auto ptr = static_cast<Component<T>*>(sptr.get());
                     return ptr->getVal();
                 }
+                
+                /*! Get parent's EntID.
+                 * 
+                 * Returns a handle to the parent Entity.
+                 * 
+                 * @return Handle to parent Entity.
+                 */
+                EntID const& getEID() const
+                {
+                    return eid;
+                }
         };
     
     // Entity functions
@@ -844,3 +853,5 @@ using _detail::Database;
 using _detail::Not;
 
 } // namespace Ginseng
+
+#endif // GINSENG_GINSENG_HPP
