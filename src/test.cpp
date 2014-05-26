@@ -1,22 +1,39 @@
 #include "../include/ginseng/ginseng.hpp"
 
+#include <chrono>
 #include <iostream>
 
 using namespace std;
+using namespace std::chrono;
 
 using DB = Ginseng::Database<>;
 using Ginseng::Not;
 using EntID = DB::EntID;
 using ComID = DB::ComID;
 
+template <typename T>
+void print(T&& t)
+{
+    
+}
+
+template <typename D, typename F>
+D bench(F&& f)
+{
+    auto b = steady_clock::now();
+    f();
+    auto e = steady_clock::now();
+    return duration_cast<D>(e-b);
+}
+
 struct A
 {
-    int a;
+    volatile int a;
 };
 
 struct B
 {
-    double b;
+    volatile double b;
 };
 
 struct C
@@ -38,10 +55,15 @@ int main()
 {
     DB db;
 
-    for (int i=0; i<10000; ++i)
+    auto work = [&]
     {
-        random_action(db);
-    }
+        for (int i=0; i<1000000; ++i)
+        {
+            random_action(db);
+        }
+    };
+    
+    cout << bench<milliseconds>(work).count() << endl;
 }
 
 mt19937& rng()
@@ -95,21 +117,21 @@ void random_query(DB& db)
     
     switch (roll)
     {
-        case 0: cout << db.query<>().size() << endl; break;
-        case 1: cout << db.query<A>().size() << endl; break;
-        case 2: cout << db.query<B>().size() << endl; break;
-        case 3: cout << db.query<C>().size() << endl; break;
-        case 4: cout << db.query<A,B>().size() << endl; break;
-        case 5: cout << db.query<A,C>().size() << endl; break;
-        case 6: cout << db.query<B,C>().size() << endl; break;
-        case 7: cout << db.query<A,B,C>().size() << endl; break;
-        case 8: cout << db.query<Not<A>>().size() << endl; break;
-        case 9: cout << db.query<Not<B>>().size() << endl; break;
-        case 10: cout << db.query<Not<C>>().size() << endl; break;
-        case 11: cout << db.query<Not<A>,B>().size() << endl; break;
-        case 12: cout << db.query<Not<A>,C>().size() << endl; break;
-        case 13: cout << db.query<Not<B>,C>().size() << endl; break;
-        case 14: cout << db.query<Not<A>,B,C>().size() << endl; break;
+        case 0: print(db.query<>().size()); break;
+        case 1: print(db.query<A>().size()); break;
+        case 2: print(db.query<B>().size()); break;
+        case 3: print(db.query<C>().size()); break;
+        case 4: print(db.query<A,B>().size()); break;
+        case 5: print(db.query<A,C>().size()); break;
+        case 6: print(db.query<B,C>().size()); break;
+        case 7: print(db.query<A,B,C>().size()); break;
+        case 8: print(db.query<Not<A>>().size()); break;
+        case 9: print(db.query<Not<B>>().size()); break;
+        case 10: print(db.query<Not<C>>().size()); break;
+        case 11: print(db.query<Not<A>,B>().size()); break;
+        case 12: print(db.query<Not<A>,C>().size()); break;
+        case 13: print(db.query<Not<B>,C>().size()); break;
+        case 14: print(db.query<Not<A>,B,C>().size()); break;
     }
 }
 
@@ -193,6 +215,5 @@ void random_slaughter(DB& db)
             for (auto&& e : all)
                 db.eraseEntity(get<0>(e));
         } break;
-        
     }
 }

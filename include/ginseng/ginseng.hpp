@@ -652,7 +652,7 @@ class Database
         {
             ComID cid;
             GUID guid = getGUID<T>();
-            AllocatorT<T> alloc;
+            AllocatorT<Component<T>> alloc;
             auto& comvec = eid.iter->components;
             
             auto pos = lower_bound(begin(comvec), end(comvec), guid);
@@ -786,13 +786,6 @@ class Database
          * It is important to note that the return type of
          * `db.query<X,Y,Not<Z>>()` will be the same as the return type of
          * `db.query<X,Y>()`.
-         * 
-         * @warning
-         * The result value will be invalidated whenever the Database is
-         * modified in any way.
-         * 
-         * This function may perform memoization as a speed optimization.
-         * Memoization data may be reset if the Database is modified in any way.
          * 
          * @tparam Ts Query properties.
          * @return Query results.
