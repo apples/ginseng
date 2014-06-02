@@ -14,7 +14,7 @@ using ComID = DB::ComID;
 template <typename T>
 void print(T&& t)
 {
-    
+    //cout << t << endl;
 }
 
 template <typename D, typename F>
@@ -57,12 +57,12 @@ int main()
 
     auto work = [&]
     {
-        for (int i=0; i<1000000; ++i)
+        for (int i=0; i<100000; ++i)
         {
             random_action(db);
         }
     };
-    
+
     cout << bench<milliseconds>(work).count() << endl;
 }
 
@@ -74,8 +74,8 @@ mt19937& rng()
 
 void random_action(DB& db)
 {
-    int roll = rng()()%10;
-    
+    int roll = rng()()%50;
+
     switch (roll)
     {
         case 0: random_query(db); break;
@@ -88,7 +88,7 @@ void random_action(DB& db)
 void add_random_entity(DB& db)
 {
     EntID eid = db.makeEntity();
-    
+
     for (int i=0; i<3; ++i)
     {
         int roll = rng()()%3;
@@ -100,9 +100,9 @@ void add_random_entity(DB& db)
 void add_random_component(DB& db, EntID eid)
 {
     int roll = rng()()%3;
-    
+
     static string strs[] = {"poop","dick","butt"};
-    
+
     switch (roll)
     {
         case 0: db.makeComponent(eid, A{int(rng()()%10)}); break;
@@ -114,7 +114,7 @@ void add_random_component(DB& db, EntID eid)
 void random_query(DB& db)
 {
     int roll = rng()()%15;
-    
+
     switch (roll)
     {
         case 0: print(db.query<>().size()); break;
@@ -138,7 +138,7 @@ void random_query(DB& db)
 void random_delete(DB& db)
 {
     int roll = rng()()%2;
-    
+
     if (roll==0)
     {
         random_delete_entity(db);
@@ -160,7 +160,7 @@ void random_delete_entity(DB& db)
 void random_delete_component(DB& db)
 {
     int roll = rng()()%3;
-    
+
     switch (roll)
     {
         case 0:
@@ -170,7 +170,7 @@ void random_delete_component(DB& db)
             int roll = rng()()%all.size();
             db.eraseComponent(get<1>(all[roll]).second);
         } break;
-        
+
         case 1:
         {
             auto all = db.query<B>();
@@ -178,7 +178,7 @@ void random_delete_component(DB& db)
             int roll = rng()()%all.size();
             db.eraseComponent(get<1>(all[roll]).second);
         } break;
-        
+
         case 2:
         {
             auto all = db.query<C>();
@@ -192,7 +192,7 @@ void random_delete_component(DB& db)
 void random_slaughter(DB& db)
 {
     int roll = rng()()%3;
-    
+
     switch (roll)
     {
         case 0:
@@ -201,14 +201,14 @@ void random_slaughter(DB& db)
             for (auto&& e : all)
                 db.eraseEntity(get<0>(e));
         } break;
-        
+
         case 1:
         {
             auto all = db.query<B>();
             for (auto&& e : all)
                 db.eraseEntity(get<0>(e));
         } break;
-        
+
         case 2:
         {
             auto all = db.query<C>();

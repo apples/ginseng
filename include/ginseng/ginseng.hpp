@@ -21,6 +21,14 @@ namespace _detail {
     template <template <typename> class AllocatorT>
     class Database;
     
+// http://stackoverflow.com/a/10669041/640397
+
+    template <typename C, typename CI>
+    typename C::iterator make_mutable_iterator(C& container, CI&& iter)
+    {
+        return container.erase(iter, iter);
+    }
+    
 // Traits
 
     // PointerToReference
@@ -209,7 +217,7 @@ namespace _detail {
                 return val.first;
             }
             
-            T& getVal() noexcept
+            T const& getVal() const noexcept
             {
                 return val.second;
             }
@@ -471,7 +479,7 @@ class Database
         {
             friend class Database;
             
-            typename AllocList<Entity>::iterator iter;
+            typename AllocList<Entity>::const_iterator iter;
             
             public:
             
@@ -520,9 +528,34 @@ class Database
                  * @return Tuple of results equivalent to get().
                  */
                 template <typename... Ts>
-                tuple<decltype(get<Ts>())...> getComs() const
+                tuple<pair<Ts*,ComID>...> getComs() const
                 {
-                    return {get<Ts>()...};
+                    return make_tuple(get<Ts>()...);
+                }
+                
+                /*! Compares this EntID to another for equivalence.
+                 *
+                 * Returns true only if the two EntIDs are handles to the same
+                 * Entity.
+                 *
+                 * @param other The EntID to compare to this.
+                 * @return True if EntIDs are equivalent.
+                 */
+                bool operator==(EntID const& other) const
+                {
+                    return (iter == other.iter);
+                }
+
+                /*! Compares this EntID to another for ordering.
+                 *
+                 * Provides a strict weak ordering for EntIDs.
+                 *
+                 * @param other The EntID to compare to this.
+                 * @return True if this should be ordered before other.
+                 */
+                bool operator<(EntID const& other) const
+                {
+                    return (&*iter < &*other.iter);
                 }
         };
 
@@ -535,7 +568,7 @@ class Database
             friend class Database;
             
             EntID eid;
-            Entity::ComponentVec::iterator iter;
+            Entity::ComponentVec::const_iterator iter;
             
             public:
                 
@@ -565,6 +598,31 @@ class Database
                 EntID const& getEID() const
                 {
                     return eid;
+                }
+                
+                /*! Compares this ComID to another for equivalence.
+                 *
+                 * Returns true only if the two ComIDs are handles to the same
+                 * Component.
+                 *
+                 * @param other The ComID to compare to this.
+                 * @return True if ComIDs are equivalent.
+                 */
+                bool operator==(ComID const& other) const
+                {
+                    return (iter == other.iter);
+                }
+
+                /*! Compares this ComID to another for ordering.
+                 *
+                 * Provides a strict weak ordering for ComIDs.
+                 *
+                 * @param other The ComID to compare to this.
+                 * @return True if this should be ordered before other.
+                 */
+                bool operator<(ComID const& other) const
+                {
+                    return less<decltype(&*iter)>{}(&*iter,&*other.iter);
                 }
         };
     
@@ -653,7 +711,8 @@ class Database
             ComID cid;
             GUID guid = getGUID<T>();
             AllocatorT<Component<T>> alloc;
-            auto& comvec = eid.iter->components;
+            auto entIter = make_mutable_iterator(entities, eid.iter);
+            auto& comvec = entIter->components;
             
             auto pos = lower_bound(begin(comvec), end(comvec), guid);
             
@@ -687,7 +746,8 @@ class Database
          */
         void eraseComponent(ComID cid)
         {
-            auto& comvec = cid.eid.iter->components;
+            auto iter = make_mutable_iterator(entities,cid.eid.iter);
+            auto& comvec = iter->components;
             comvec.erase(cid.iter);
         }
         
@@ -791,7 +851,7 @@ class Database
          * @return Query results.
          */
         template <typename... Ts>
-        typename QueryTraits<Database, Ts...>::result query()
+        typename QueryTraits<Database, Ts...>::result query() const
         {
             using Traits = QueryTraits<Database, Ts...>;
             using Result = typename Traits::result;
