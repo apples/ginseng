@@ -5,45 +5,35 @@ An entity component framework designed for use in games.
 # Disclaimer
 
 This is an academic project, and it is not guaranteed to be suitable
-for any particular purpose. It is nothing more than a basic framework,
-created with purely academic intent.
-
-This is also in active development,
-and is nowhere near finished.
-Breaking changes will happen a lot.
+for any particular purpose.
 
 With that said, I feel that this framework is solid.
-When used within its limitations, it should not fail.
+I have used it in many of my other projects.
 
 # Features
 
 ## Fully type-safe
 
-Types and functions are meticulously metaprogrammed
-to ensure that the types you put in are the types you get out.
-Dynamic polymorphism is kept to a minimum, and is always used safely.
-CRTP is used to verify types, and does not require `dynamic_cast`.
+Any type can be easily stored as a component,
+including built-in types, such as `int` and `float`.
 
 ## Efficient
 
-Database structures are represented by `std::unordered_map`,
-using integral types as keys.
-This is considered a highly efficient associative container,
-and has amortized constant-time operations.
+From a high-level perspective,
+the database is represented as a list of entities,
+where each entity is a vector of pointer-to-components.
+
+I believe that this is the most efficient representation,
+without sacrificing ease-of-use.
+
+A custom allocator may be used to allocate components
+and entity list nodes.
 
 ## Extensible
 
-The only requirement for components is that they inherit from
-`Ginseng::Component<>`.
-Default implementations are provided for any virtual functions,
-so it is never necessary (although usually desirable) to override them.
-
-## Serializable
-
-The entire database is easily serializable,
-as are individual components and entities.
-This makes it easy to save data to a file
-or send it over a network.
+Along with being able to use any type as a componenent,
+the database is simple enough that extra functionality
+can be composed on top of it.
 
 # Contact
 
