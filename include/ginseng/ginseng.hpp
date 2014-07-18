@@ -349,7 +349,7 @@ namespace _detail {
 
                     auto& info = get<I>(ele);
 
-                    info = eid.get<Com>();
+                    info = eid.template get<Com>();
 
                     if (!info) return false;
 
@@ -384,7 +384,7 @@ namespace _detail {
                 static auto getComs(EID eid)
                 -> decltype(eid.template getComs<Ts...>())
                 {
-                    return eid.getComs<Ts...>();
+                    return eid.template getComs<Ts...>();
                 }
             };
 
@@ -399,7 +399,7 @@ namespace _detail {
                 template <typename EID>
                 static bool noNots(EID eid)
                 {
-                    T* ptr = eid.get<T>().first;
+                    T* ptr = eid.template get<T>().first;
                     if (ptr) return false;
                     return QueryHelper_noNots<TypeList<Ts...>>::noNots(eid);
                 }
