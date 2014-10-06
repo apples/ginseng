@@ -21,14 +21,6 @@ namespace _detail {
     template <template <typename> class AllocatorT>
     class Database;
 
-// http://stackoverflow.com/a/10669041/640397
-
-    template <typename C, typename CI>
-    typename C::iterator make_mutable_iterator(C& container, CI&& iter)
-    {
-        return container.erase(iter, iter);
-    }
-
 // Traits
 
     // PointerToReference
@@ -217,6 +209,11 @@ namespace _detail {
                 return val.first;
             }
 
+            T& getVal() noexcept
+            {
+                return val.second;
+            }
+
             T const& getVal() const noexcept
             {
                 return val.second;
@@ -237,12 +234,13 @@ namespace _detail {
 
 // Entity
 
+    using ComponentData = GUIDPair<shared_ptr<AbstractComponent>>;
+
     class Entity
     {
         template <template <typename> class AllocatorT>
         friend class Database;
 
-        using ComponentData = GUIDPair<shared_ptr<AbstractComponent>>;
         using ComponentVec = vector<ComponentData>;
 
         ComponentVec components;
@@ -399,8 +397,8 @@ namespace _detail {
                 template <typename EID>
                 static bool noNots(EID eid)
                 {
-                    T* ptr = eid.template get<T>().first;
-                    if (ptr) return false;
+                    auto com = eid.template get<T>();
+                    if (com) return false;
                     return QueryHelper_noNots<TypeList<Ts...>>::noNots(eid);
                 }
             };
@@ -453,7 +451,7 @@ class Database
         {
             friend class Database;
 
-            typename AllocList<Entity>::const_iterator iter;
+            typename AllocList<Entity>::iterator iter;
 
             public:
 
@@ -542,7 +540,7 @@ class Database
             friend class Database;
 
             EntID eid;
-            Entity::ComponentVec::const_iterator iter;
+            Entity::ComponentVec::iterator iter;
 
             public:
 
@@ -749,8 +747,8 @@ class Database
             ComID cid;
             GUID guid = getGUID<T>();
             AllocatorT<Component<T>> alloc;
-            auto entIter = make_mutable_iterator(entities, eid.iter);
-            auto& comvec = entIter->components;
+
+            auto& comvec = eid.iter->components;
 
             auto pos = lower_bound(begin(comvec), end(comvec), guid);
 
@@ -784,8 +782,7 @@ class Database
          */
         void eraseComponent(ComID cid)
         {
-            auto iter = make_mutable_iterator(entities,cid.eid.iter);
-            auto& comvec = iter->components;
+            auto& comvec = cid.eid.iter->components;
             comvec.erase(cid.iter);
         }
 
@@ -802,7 +799,7 @@ class Database
          * @param dat Component data to move.
          * @return ComID to the new component.
          */
-        ComID emplaceComponent(EntID eid, Entity::ComponentData&& dat)
+        ComID emplaceComponent(EntID eid, ComponentData&& dat)
         {
             ComID rv;
             auto& comvec = eid.iter->components;
@@ -836,10 +833,10 @@ class Database
          * @param cid ComID of the component to displace.
          * @return Component data.
          */
-        Entity::ComponentData displaceComponent(ComID cid)
+        ComponentData displaceComponent(ComID cid)
         {
-            Entity::ComponentData rv = move(*cid.iter);
             auto& comvec = cid.eid.iter->components;
+            ComponentData rv = move(*cid.iter);
             comvec.erase(cid.iter);
             return rv;
         }
@@ -889,7 +886,7 @@ class Database
          * @return Query results.
          */
         template <typename... Ts>
-        typename QueryTraits<Database, Ts...>::result query() const
+        typename QueryTraits<Database, Ts...>::result query()
         {
             using Traits = QueryTraits<Database, Ts...>;
             using Result = typename Traits::result;
@@ -941,6 +938,8 @@ class Database
 
 } // namespace _detail
 
+using _detail::ComponentData;
+using _detail::Entity;
 using _detail::Database;
 using _detail::Not;
 

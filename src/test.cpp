@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <random>
 
 using namespace std;
 using namespace std::chrono;
@@ -168,7 +169,7 @@ void random_delete_component(DB& db)
             auto all = db.query<A>();
             if (all.empty()) return;
             int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).second);
+            db.eraseComponent(get<1>(all[roll]).id());
         } break;
 
         case 1:
@@ -176,7 +177,7 @@ void random_delete_component(DB& db)
             auto all = db.query<B>();
             if (all.empty()) return;
             int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).second);
+            db.eraseComponent(get<1>(all[roll]).id());
         } break;
 
         case 2:
@@ -184,7 +185,7 @@ void random_delete_component(DB& db)
             auto all = db.query<C>();
             if (all.empty()) return;
             int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).second);
+            db.eraseComponent(get<1>(all[roll]).id());
         } break;
     }
 }
