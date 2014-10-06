@@ -102,7 +102,7 @@ void add_random_component(DB& db, EntID eid)
 {
     int roll = rng()()%3;
 
-    static string strs[] = {"poop","dick","butt"};
+    static string strs[] = {"meow","honk","goro"};
 
     switch (roll)
     {
