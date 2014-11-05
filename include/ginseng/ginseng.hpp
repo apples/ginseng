@@ -221,13 +221,13 @@ namespace _detail {
     };
 
     template <typename T>
-    constexpr bool operator<(GUIDPair<T>const& a, GUIDPair<T>const& b) noexcept
+    bool operator<(GUIDPair<T>const& a, GUIDPair<T>const& b) noexcept
     {
         return a.getGUID() < b.getGUID();
     }
 
     template <typename T>
-    constexpr bool operator<(GUIDPair<T> const& a, GUID guid) noexcept
+    bool operator<(GUIDPair<T> const& a, GUID guid) noexcept
     {
         return a.getGUID() < guid;
     }
@@ -339,7 +339,7 @@ namespace _detail {
 
                 template <size_t I=1>
                 static typename enable_if<
-                    I < tuple_size<result_element>::value,
+                    (I < tuple_size<result_element>::value),
                 bool>::type fillInfo(EntID eid, result_element& ele)
                 {
                     using TE = typename tuple_element<I,result_element>::type;
@@ -356,7 +356,7 @@ namespace _detail {
 
                 template <size_t I=1>
                 static typename enable_if<
-                    I >= tuple_size<result_element>::value,
+                    (I >= tuple_size<result_element>::value),
                 bool>::type fillInfo(EntID eid, result_element& ele)
                 {
                     return true;
