@@ -1,6 +1,6 @@
-*
-!**/
-!*.md
-!*.cpp
-!*.hpp
+/*
 !.gitignore
+!*.md
+!*.txt
+!include
+!src
