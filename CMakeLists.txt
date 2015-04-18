@@ -3,7 +3,7 @@ project(Ginseng)
 
 file(GLOB_RECURSE ginseng_SOURCES include/ginseng/*)
 add_library(ginseng INTERFACE)
-target_sources(ginseng INTERFACE ${ginseng_SOURCES})
+set_property(TARGET ginseng PROPERTY INTERFACE_SOURCES ${ginseng_SOURCES})
 target_include_directories(ginseng INTERFACE include)
 
 add_executable(test_ginseng EXCLUDE_FROM_ALL src/test.cpp)
