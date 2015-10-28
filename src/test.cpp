@@ -47,6 +47,7 @@ void random_action(DB& db);
 void add_random_entity(DB& db);
 void add_random_component(DB& db, EntID eid);
 void random_query(DB& db);
+void random_visit(DB& db);
 void random_delete(DB& db);
 void random_delete_entity(DB& db);
 void random_delete_component(DB& db);
@@ -80,8 +81,9 @@ void random_action(DB& db)
     switch (roll)
     {
         case 0: random_query(db); break;
-        case 1: random_delete(db); break;
-        case 2: random_slaughter(db); break;
+        case 1: random_visit(db); break;
+        case 2: random_delete(db); break;
+        case 3: random_slaughter(db); break;
         default: add_random_entity(db); break;
     }
 }
@@ -133,6 +135,30 @@ void random_query(DB& db)
         case 12: print(db.query<Not<A>,C>().size()); break;
         case 13: print(db.query<Not<B>,C>().size()); break;
         case 14: print(db.query<Not<A>,B,C>().size()); break;
+    }
+}
+
+void random_visit(DB& db)
+{
+    int roll = rng()()%15;
+
+    switch (roll)
+    {
+        case 0: db.visit( [](){} ); break;
+        case 1: db.visit( [](A){} ); break;
+        case 2: db.visit( [](B){} ); break;
+        case 3: db.visit( [](C){} ); break;
+        case 4: db.visit( [](A,B){} ); break;
+        case 5: db.visit( [](A,C){} ); break;
+        case 6: db.visit( [](B,C){} ); break;
+        case 7: db.visit( [](A,B,C){} ); break;
+        case 8: db.visit( [](Not<A>){} ); break;
+        case 9: db.visit( [](Not<B>){} ); break;
+        case 10: db.visit( [](Not<C>){} ); break;
+        case 11: db.visit( [](Not<A>,B){} ); break;
+        case 12: db.visit( [](Not<A>,C){} ); break;
+        case 13: db.visit( [](Not<B>,C){} ); break;
+        case 14: db.visit( [](Not<A>,B,C){} ); break;
     }
 }
 

@@ -363,6 +363,109 @@ namespace _detail {
                 }
         };
 
+        template <typename DB, typename EntID, typename... Components>
+        struct Applier;
+
+        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
+        struct Applier<DB,EntID,HeadCom,TailComs...>
+        {
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (auto com_info = eid.get<HeadCom>())
+                {
+                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info.data());
+                }
+            }
+        };
+
+        template <typename DB, typename EntID, typename... TailComs>
+        struct Applier<DB,EntID,EntID,TailComs...>
+        {
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
+            }
+        };
+
+        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
+        struct Applier<DB,EntID,Not<HeadCom>,TailComs...>
+        {
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (auto com_info = eid.get<HeadCom>())
+                {
+                    return;
+                }
+                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<HeadCom>{});
+            }
+        };
+
+        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
+        struct Applier<DB,EntID,typename DB::template ComInfo<HeadCom>,TailComs...>
+        {
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (auto com_info = eid.get<HeadCom>())
+                {
+                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info);
+                }
+            }
+        };
+
+        template <typename DB, typename EntID>
+        struct Applier<DB,EntID>
+        {
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
+            }
+        };
+
+        template <typename DB, typename... Components>
+        struct VisitorTraitsImpl
+        {
+            using EntID = typename DB::EntID;
+
+            template <typename Visitor>
+            static void apply(EntID eid, Visitor&& visitor)
+            {
+                Applier<DB,EntID,Components...>::try_apply(eid,std::forward<Visitor>(visitor));
+            }
+        };
+
+        template <typename DB, typename Visitor>
+        struct VisitorTraits : VisitorTraits<DB,decltype(&Visitor::operator())>
+        {};
+
+        template <typename DB, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(*)(Ts...)> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
+        template <typename DB, typename Visitor, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(Visitor::*)(Ts...)> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
+        template <typename DB, typename Visitor, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(Visitor::*)(Ts...)const> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
+        template <typename DB, typename Visitor, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(Visitor::*)(Ts...)&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
+        template <typename DB, typename Visitor, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(Visitor::*)(Ts...)const&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
+        template <typename DB, typename Visitor, typename R, typename... Ts>
+        struct VisitorTraits<DB, R(Visitor::*)(Ts...)&&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        {};
+
         // QueryResult_t
 
             template <typename DB, typename... Ts>
@@ -933,6 +1036,19 @@ class Database
             }
 
             return rv;
+        }
+
+        template <typename Visitor>
+        void visit(Visitor&& visitor) {
+            using Traits = VisitorTraits<Database, Visitor>;
+
+            // Query loop
+            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+            {
+                EntID eid;
+                eid.iter = i;
+                Traits::apply(eid,std::forward<Visitor>(visitor));
+            }
         }
 };
 
