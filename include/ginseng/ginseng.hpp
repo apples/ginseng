@@ -1050,6 +1050,13 @@ class Database
                 Traits::apply(eid,std::forward<Visitor>(visitor));
             }
         }
+
+    // status functions
+
+        auto size() const -> decltype(entities.size())
+        {
+            return entities.size();
+        }
 };
 
 } // namespace _detail

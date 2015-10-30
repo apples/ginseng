@@ -1,246 +1,177 @@
-#include "../include/ginseng/ginseng.hpp"
+#include "catch.hpp"
 
-#include <chrono>
-#include <iostream>
-#include <random>
+#include <ginseng/ginseng.hpp>
 
-using namespace std;
-using namespace std::chrono;
+#include <array>
+#include <memory>
 
 using DB = Ginseng::Database<>;
 using Ginseng::Not;
 using EntID = DB::EntID;
 using ComID = DB::ComID;
 
-template <typename T>
-void print(T&& t)
+TEST_CASE("Entities can be added and removed from a database", "[ginseng]")
 {
-    //cout << t << endl;
+    DB db;
+    REQUIRE(db.size() == 0);
+
+    EntID ent1 = db.makeEntity();
+    REQUIRE(db.size() == 1);
+
+    EntID ent2 = db.makeEntity();
+    REQUIRE(db.size() == 2);
+
+    db.eraseEntity(ent2);
+    REQUIRE(db.size() == 1);
+
+    db.eraseEntity(ent1);
+    REQUIRE(db.size() == 0);
 }
 
-template <typename D, typename F>
-D bench(F&& f)
+TEST_CASE("Components can be added, accessed, and removed from entities", "[ginseng]")
 {
-    auto b = steady_clock::now();
-    f();
-    auto e = steady_clock::now();
-    return duration_cast<D>(e-b);
+    DB db;
+    auto ent = db.makeEntity();
+
+    struct ComA {
+        int x;
+    };
+    struct ComB {
+        double y;
+    };
+
+    auto com1 = db.makeComponent(ent, ComA{7});
+    REQUIRE(bool(com1) == true);
+    ComA *com1ptr1 = &com1.data();
+    REQUIRE(com1ptr1 != nullptr);
+
+    auto com1info = ent.get<ComA>();
+    REQUIRE(bool(com1info) == true);
+    ComA *com1ptr2 = &com1info.data();
+    REQUIRE(com1ptr1 == com1ptr2);
+
+
+    auto com2 = db.makeComponent(ent, ComB{4.2});
+    REQUIRE(bool(com2) == true);
+    ComB *com2ptr1 = &com2.data();
+    REQUIRE(com2ptr1 != nullptr);
+
+    auto com2info = ent.get<ComB>();
+    REQUIRE(bool(com2info) == true);
+    ComB *com2ptr2 = &com2info.data();
+    REQUIRE(com2ptr1 == com2ptr2);
+
+    REQUIRE(&ent.get<ComA>().data() == com1ptr1);
+    REQUIRE(ent.get<ComA>().data().x == 7);
+
+    REQUIRE(&ent.get<ComB>().data() == com2ptr1);
+    REQUIRE(ent.get<ComB>().data().y == 4.2);
+
+    db.eraseComponent(ent.get<ComA>().id());
+
+    REQUIRE(&ent.get<ComB>().data() == com2ptr1);
+    REQUIRE(ent.get<ComB>().data().y == 4.2);
+
+    db.eraseComponent(ent.get<ComB>().id());
 }
 
-struct A
-{
-    volatile int a;
-};
-
-struct B
-{
-    volatile double b;
-};
-
-struct C
-{
-    string c;
-};
-
-mt19937& rng();
-void random_action(DB& db);
-void add_random_entity(DB& db);
-void add_random_component(DB& db, EntID eid);
-void random_query(DB& db);
-void random_visit(DB& db);
-void random_delete(DB& db);
-void random_delete_entity(DB& db);
-void random_delete_component(DB& db);
-void random_slaughter(DB& db);
-
-int main()
+TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
 {
     DB db;
 
-    auto work = [&]
+    struct ID { int id; };
+    struct Data1 { double val; };
+    struct Data2 { std::unique_ptr<int> no_move; };
+
+    int next_id = 0;
+
+    auto make_ent = [&](bool give_Data1, bool give_Data2)
     {
-        for (int i=0; i<100000; ++i)
-        {
-            random_action(db);
-        }
+        auto ent = db.makeEntity();
+        auto id_com = db.makeComponent(ent, ID{next_id});
+        ++next_id;
+        if (give_Data1) { db.makeComponent(ent, Data1{7}); }
+        if (give_Data2) { db.makeComponent(ent, Data2{nullptr}); }
+        return ent;
     };
 
-    cout << bench<milliseconds>(work).count() << endl;
+    make_ent(false, false);
+    make_ent(true, false);
+    make_ent(true, false);
+    make_ent(false, true);
+    make_ent(false, true);
+    make_ent(false, true);
+    make_ent(true, true);
+    make_ent(true, true);
+    make_ent(true, true);
+    make_ent(true, true);
+
+    REQUIRE(next_id == 10);
+    REQUIRE(db.size() == next_id);
+
+    std::array<int,10> visited;
+    std::array<int,10> expected_visited;
+
+    visited = {};
+    expected_visited = {{1,1,1,1,1,1,1,1,1,1}};
+    db.visit([&](ID& id){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{0,1,1,0,0,0,1,1,1,1}};
+    db.visit([&](ID& id, Data1&){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{0,0,0,1,1,1,1,1,1,1}};
+    db.visit([&](ID& id, Data2&){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{0,0,0,0,0,0,1,1,1,1}};
+    db.visit([&](ID& id, Data1&, Data2&){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{1,0,0,1,1,1,0,0,0,0}};
+    db.visit([&](ID& id, Not<Data1>){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{0,0,0,1,1,1,0,0,0,0}};
+    db.visit([&](ID& id, Not<Data1>, Data2&){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{0,1,1,0,0,0,0,0,0,0}};
+    db.visit([&](ID& id, Data1&, Not<Data2>){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    visited = {};
+    expected_visited = {{1,0,0,0,0,0,0,0,0,0}};
+    db.visit([&](ID& id, Not<Data1>, Not<Data2>){
+        ++visited[id.id];
+    });
+    REQUIRE(visited == expected_visited);
+
+    int num_visited = 0;
+    db.visit([&](Not<ID>){
+        ++num_visited;
+    });
+    REQUIRE(num_visited == 0);
 }
 
-mt19937& rng()
-{
-    static mt19937 mt;
-    return mt;
-}
-
-void random_action(DB& db)
-{
-    int roll = rng()()%50;
-
-    switch (roll)
-    {
-        case 0: random_query(db); break;
-        case 1: random_visit(db); break;
-        case 2: random_delete(db); break;
-        case 3: random_slaughter(db); break;
-        default: add_random_entity(db); break;
-    }
-}
-
-void add_random_entity(DB& db)
-{
-    EntID eid = db.makeEntity();
-
-    for (int i=0; i<3; ++i)
-    {
-        int roll = rng()()%3;
-        if (roll==0) continue;
-        add_random_component(db, eid);
-    }
-}
-
-void add_random_component(DB& db, EntID eid)
-{
-    int roll = rng()()%3;
-
-    static string strs[] = {"meow","honk","goro"};
-
-    switch (roll)
-    {
-        case 0: db.makeComponent(eid, A{int(rng()()%10)}); break;
-        case 1: db.makeComponent(eid, B{(rng()()%100)/100.0}); break;
-        case 2: db.makeComponent(eid, C{strs[rng()()%3]}); break;
-    }
-}
-
-void random_query(DB& db)
-{
-    int roll = rng()()%15;
-
-    switch (roll)
-    {
-        case 0: print(db.query<>().size()); break;
-        case 1: print(db.query<A>().size()); break;
-        case 2: print(db.query<B>().size()); break;
-        case 3: print(db.query<C>().size()); break;
-        case 4: print(db.query<A,B>().size()); break;
-        case 5: print(db.query<A,C>().size()); break;
-        case 6: print(db.query<B,C>().size()); break;
-        case 7: print(db.query<A,B,C>().size()); break;
-        case 8: print(db.query<Not<A>>().size()); break;
-        case 9: print(db.query<Not<B>>().size()); break;
-        case 10: print(db.query<Not<C>>().size()); break;
-        case 11: print(db.query<Not<A>,B>().size()); break;
-        case 12: print(db.query<Not<A>,C>().size()); break;
-        case 13: print(db.query<Not<B>,C>().size()); break;
-        case 14: print(db.query<Not<A>,B,C>().size()); break;
-    }
-}
-
-void random_visit(DB& db)
-{
-    int roll = rng()()%15;
-
-    switch (roll)
-    {
-        case 0: db.visit( [](){} ); break;
-        case 1: db.visit( [](A){} ); break;
-        case 2: db.visit( [](B){} ); break;
-        case 3: db.visit( [](C){} ); break;
-        case 4: db.visit( [](A,B){} ); break;
-        case 5: db.visit( [](A,C){} ); break;
-        case 6: db.visit( [](B,C){} ); break;
-        case 7: db.visit( [](A,B,C){} ); break;
-        case 8: db.visit( [](Not<A>){} ); break;
-        case 9: db.visit( [](Not<B>){} ); break;
-        case 10: db.visit( [](Not<C>){} ); break;
-        case 11: db.visit( [](Not<A>,B){} ); break;
-        case 12: db.visit( [](Not<A>,C){} ); break;
-        case 13: db.visit( [](Not<B>,C){} ); break;
-        case 14: db.visit( [](Not<A>,B,C){} ); break;
-    }
-}
-
-void random_delete(DB& db)
-{
-    int roll = rng()()%2;
-
-    if (roll==0)
-    {
-        random_delete_entity(db);
-    }
-    else
-    {
-        random_delete_component(db);
-    }
-}
-
-void random_delete_entity(DB& db)
-{
-    auto all = db.query<>();
-    if (all.empty()) return;
-    int roll = rng()()%all.size();
-    db.eraseEntity(get<0>(all[roll]));
-}
-
-void random_delete_component(DB& db)
-{
-    int roll = rng()()%3;
-
-    switch (roll)
-    {
-        case 0:
-        {
-            auto all = db.query<A>();
-            if (all.empty()) return;
-            int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).id());
-        } break;
-
-        case 1:
-        {
-            auto all = db.query<B>();
-            if (all.empty()) return;
-            int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).id());
-        } break;
-
-        case 2:
-        {
-            auto all = db.query<C>();
-            if (all.empty()) return;
-            int roll = rng()()%all.size();
-            db.eraseComponent(get<1>(all[roll]).id());
-        } break;
-    }
-}
-
-void random_slaughter(DB& db)
-{
-    int roll = rng()()%3;
-
-    switch (roll)
-    {
-        case 0:
-        {
-            auto all = db.query<A>();
-            for (auto&& e : all)
-                db.eraseEntity(get<0>(e));
-        } break;
-
-        case 1:
-        {
-            auto all = db.query<B>();
-            for (auto&& e : all)
-                db.eraseEntity(get<0>(e));
-        } break;
-
-        case 2:
-        {
-            auto all = db.query<C>();
-            for (auto&& e : all)
-                db.eraseEntity(get<0>(e));
-        } break;
-    }
-}
