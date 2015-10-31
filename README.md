@@ -2,42 +2,85 @@
 
 An entity component framework designed for use in games.
 
-# Disclaimer
+## Features
 
-This is an academic project, and it is not guaranteed to be suitable
-for any particular purpose.
+- Fully type safe!
+- No dynamic casts.
+- Type erasure; no intrusive inheritance.
+- No exceptions are thrown.
+- Unlimited component types.
+- Systems are just regular functions.
 
-With that said, I feel that this framework is solid.
-I have used it in many of my other projects.
+## Status
 
-# Features
+Ginseng is currently in-development, but it already works exceptionally well.
 
-## Fully type-safe
+It is not stable yet, but a 1.0 release is approaching quickly.
 
-Any type can be easily stored as a component,
-including built-in types, such as `int` and `float`.
+## Dependencies
 
-## Efficient
+There are none! Ginseng is a single-header library that only requires C++11.
 
-From a high-level perspective,
-the database is represented as a list of entities,
-where each entity is a vector of pointer-to-components.
+## Example
 
-I believe that this is the most efficient representation,
-without sacrificing ease-of-use.
+An example of Ginseng being used in a game:
 
-A custom allocator may be used to allocate components
-and entity list nodes.
+```c++
+#include <ginseng/ginseng.hpp>
 
-## Extensible
+using DB = Ginseng::Database<>;
+using Ginseng::Not;
+using Ginseng::Tag;
 
-Along with being able to use any type as a componenent,
-the database is simple enough that extra functionality
-can be composed on top of it.
+// Components can be any value type.
 
-# Contact
+struct NameCom {
+    std::string name;
+};
 
-If you encounter any bugs or have a feature request,
-feel free to [submit an issue][github-issues].
+struct PositionCom {
+    double x;
+    double y;
+};
 
-[github-issues]: https://github.com/dbralir/ginseng/issues
+// Tag components will not contain a value (no allocation).
+
+struct IsEnemy {};
+using IsEnemyTag = Tag<IsEnemy>;
+
+struct Game {
+    DB db; // Databases are value types.
+    
+    Game() {
+        // db.makeEntity() returns an entity ID (similar to an iterator).
+        auto player = db.makeEntity();
+        
+        // db.makeComponent() copies the given component into the entity.
+        db.makeComponent(player, NameCom{"The Player"});
+        db.makeComponent(player, PositionCom{12, 42});
+        
+        auto enemy = db.makeEntity();
+        db.makeComponent(enemy, NameCom{"An Enemy"});
+        db.makeComponent(enemy, PositionCom{7, 53});
+        db.makeComponent(enemy, IsEnemyTag{});
+    }
+    
+    void run_game() {
+        // db.visit() automatically detects visitor parameters.
+        db.visit([](const NameCom& name, const PositionCom& pos){
+            std::cout << "Entity " << name.name
+                      << " is at (" << pos.x << "," << pos.y << ")."
+                      << std::endl;
+        });
+    
+        // The Not<> annotation can be used to skip unwanted entities.
+        db.visit([](const NameCom& name, Not<IsEnemyTag>){
+            std::cout << name.name << " is not an enemy." << std::endl;
+        });
+    }
+};
+```
+
+## License
+
+See [LICENSE.txt](https://github.com/dbralir/ginseng/blob/master/LICENSE.txt).
