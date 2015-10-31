@@ -309,65 +309,7 @@ namespace _detail {
         struct IsPositive<Not<Ts...>> : false_type
         {};
 
-    // QueryTraits
-
-        template <typename DB, typename... Ts>
-        struct QueryTraits
-        {
-            using types = TypeList<Ts...>;
-            using components = TypeListFilter_t<types, IsPositive>;
-
-            using EntID = typename DB::EntID;
-            using ComID = typename DB::ComID;
-
-            template <typename T>
-            using Ref = typename add_lvalue_reference<T>::type;
-
-            template <typename T>
-            using Ptr = T*;
-
-            template <typename T>
-            using CIDPair = pair<T,ComID>;
-
-            template <typename T>
-            using ComInfo = typename DB::template ComInfo<T>;
-
-            using component_dats = TypeListImbue_t<components, ComInfo>;
-
-            using result_item = TypeListCat_t<TypeList<EntID>,component_dats>;
-            using result_element = TypeListTuple_t<result_item>;
-
-            using result = vector<result_element>;
-
-            using nots = FlattenNots_t<TypeListFilter_t<types, IsNot>>;
-
-            // fillInfo
-
-                template <size_t I=1>
-                static typename enable_if<
-                    (I < tuple_size<result_element>::value),
-                bool>::type fillInfo(EntID eid, result_element& ele)
-                {
-                    using TE = typename tuple_element<I,result_element>::type;
-                    using Com = typename TE::type;
-
-                    auto& info = get<I>(ele);
-
-                    info = eid.template get<Com>();
-
-                    if (!info) return false;
-
-                    return fillInfo<I+1>(eid,ele);
-                }
-
-                template <size_t I=1>
-                static typename enable_if<
-                    (I >= tuple_size<result_element>::value),
-                bool>::type fillInfo(EntID eid, result_element& ele)
-                {
-                    return true;
-                }
-        };
+    // Traits
 
         struct ComponentTags
         {
@@ -375,34 +317,41 @@ namespace _detail {
             struct tagged {};
             struct inverted {};
             struct info {};
+            struct eid {};
         };
 
-        template <template <typename> class ComInfo, typename Component>
+        template <typename DB, typename Component, template <typename> class ComInfo = DB::template ComInfo>
         struct ComponentTraits
         {
             using tag = ComponentTags::normal;
             using com = Component;
         };
 
-        template <template <typename> class ComInfo, typename Component>
-        struct ComponentTraits<ComInfo,ComInfo<Component>>
+        template <typename DB, typename Component, template <typename> class ComInfo>
+        struct ComponentTraits<DB,ComInfo<Component>,ComInfo>
         {
             using tag = ComponentTags::info;
             using com = Component;
         };
 
-        template <template <typename> class ComInfo, typename Component>
-        struct ComponentTraits<ComInfo,Tag<Component>>
+        template <typename DB, typename Component, template <typename> class ComInfo>
+        struct ComponentTraits<DB,Tag<Component>,ComInfo>
         {
             using tag = ComponentTags::tagged;
             using com = Tag<Component>;
         };
 
-        template <template <typename> class ComInfo, typename Component>
-        struct ComponentTraits<ComInfo,Not<Component>>
+        template <typename DB, typename Component, template <typename> class ComInfo>
+        struct ComponentTraits<DB,Not<Component>,ComInfo>
         {
             using tag = ComponentTags::inverted;
             using com = Component;
+        };
+
+        template <typename DB, template <typename> class ComInfo>
+        struct ComponentTraits<DB,typename DB::EntID,ComInfo>
+        {
+            using tag = ComponentTags::eid;
         };
 
         template <typename DB, typename EntID, typename... Components>
@@ -448,10 +397,16 @@ namespace _detail {
                 }
             }
 
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::eid, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
+            }
+
             template <typename Visitor, typename... Args>
             static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
             {
-                using Traits = ComponentTraits<DB::template ComInfo,HeadCom>;
+                using Traits = ComponentTraits<DB,HeadCom>;
                 return helper<Traits>(typename Traits::tag{}, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
             }
         };
@@ -506,55 +461,92 @@ namespace _detail {
         struct VisitorTraits<DB, R(Visitor::*)(Ts...)&&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
         {};
 
-        // QueryResult_t
+        template <typename... Coms>
+        struct FilterComponents;
 
-            template <typename DB, typename... Ts>
-            using QueryResult_t = typename QueryTraits<DB, Ts...>::result;
+        template <>
+        struct FilterComponents<>
+        {
+            using type = std::tuple<>;
+        };
 
-    // QueryHelper
+        template <typename Head, typename... Tail>
+        struct FilterComponents<Head,Tail...>
+        {
+            using type = decltype(std::tuple_cat(std::declval<std::tuple<Head>>(),std::declval<typename FilterComponents<Tail...>::type>()));
+        };
 
-        // getComs
+        template <typename Head, typename... Tail>
+        struct FilterComponents<Tag<Head>,Tail...>
+        {
+            using type = typename FilterComponents<Tail...>::type;
+        };
+
+        template <typename Head, typename... Tail>
+        struct FilterComponents<Not<Head>,Tail...>
+        {
+            using type = typename FilterComponents<Tail...>::type;
+        };
+
+        template <typename DB, typename... Components>
+        struct QueryTraits
+        {
+            template <typename T>
+            struct ComRef
+            {
+                using type = T&;
+            };
 
             template <typename T>
-            struct QueryHelper_getComs;
+            struct ComRef<Tag<T>>
+            {
+                using type = Tag<T>;
+            };
+
+            template <typename T>
+            struct ComRef<Not<T>>
+            {
+                using type = Not<T>;
+            };
+
+            template <typename T>
+            using MakeParam = typename ComRef<T>::type;
+
+            using Tuple = decltype(std::tuple_cat(std::declval<std::tuple<typename DB::EntID>>(),std::declval<typename FilterComponents<Components...>::type>()));
+
+            template <typename F>
+            static void emplace_helper(F f)
+            {
+                f();
+            };
+
+            template <typename F, typename T, typename... Ts>
+            static void emplace_helper(F f, T&& t, Ts&&... ts)
+            {
+                emplace_helper([f,&t](auto&&... parms){
+                    f(std::forward<T>(t), std::forward<decltype(parms)>(parms)...);
+                }, ts...);
+            };
+
+            template <typename F, typename T, typename... Ts>
+            static void emplace_helper(F f, Not<T> t, Ts&&... ts)
+            {
+                emplace_helper(f, ts...);
+            };
+
+            template <typename F, typename T, typename... Ts>
+            static void emplace_helper(F f, Tag<T> t, Ts&&... ts)
+            {
+                emplace_helper(f, ts...);
+            };
 
             template <typename... Ts>
-            struct QueryHelper_getComs<TypeList<Ts...>>
+            static void emplace_back(std::vector<Tuple>& vec, typename DB::EntID eid, Ts&&... ts)
             {
-                template <typename EID>
-                static auto getComs(EID eid)
-                -> decltype(eid.template getComs<Ts...>())
-                {
-                    return eid.template getComs<Ts...>();
-                }
-            };
-
-        // noNots
-
-            template <typename T>
-            struct QueryHelper_noNots;
-
-            template <typename T, typename... Ts>
-            struct QueryHelper_noNots<TypeList<T, Ts...>>
-            {
-                template <typename EID>
-                static bool noNots(EID eid)
-                {
-                    auto com = eid.template get<T>();
-                    if (com) return false;
-                    return QueryHelper_noNots<TypeList<Ts...>>::noNots(eid);
-                }
-            };
-
-            template <>
-            struct QueryHelper_noNots<TypeList<>>
-            {
-                template <typename EID>
-                static bool noNots(EID eid)
-                {
-                    return true;
-                }
-            };
+                auto emplacer = [&vec,&eid](auto&&... ts){ vec.emplace_back(eid, std::forward<decltype(ts)>(ts)...); };
+                emplace_helper(emplacer, std::forward<Ts>(ts)...);
+            }
+        };
 
 /*! Database
  *
@@ -1071,6 +1063,19 @@ class Database
             return rv;
         }
 
+        template <typename Visitor>
+        void visit(Visitor&& visitor) {
+            using Traits = VisitorTraits<Database, Visitor>;
+
+            // Query loop
+            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+            {
+                EntID eid;
+                eid.iter = i;
+                Traits::apply(eid,std::forward<Visitor>(visitor));
+            }
+        }
+
     // query
 
         /*! Query the Database.
@@ -1116,66 +1121,17 @@ class Database
          * @return Query results.
          */
         template <typename... Ts>
-        typename QueryTraits<Database, Ts...>::result query()
+        std::vector<typename QueryTraits<Database,Ts...>::Tuple> query()
         {
-            using Traits = QueryTraits<Database, Ts...>;
-            using Result = typename Traits::result;
-            using Nots = typename Traits::nots;
-            using Tmp = typename Traits::result_element;
+            using Traits = QueryTraits<Database,Ts...>;
 
-            Result rv;
-            Tmp tmp;
+            std::vector<typename Traits::Tuple> rv;
 
-            // Checks the eid for negative query properties.
-            auto check_negatives = [](EntID eid)
-            {
-                return QueryHelper_noNots<Nots>::noNots(eid);
-            };
-
-            // Fills tmp with pointers, returns true on success.
-            auto fill_tmp = [&](EntID eid)
-            {
-                get<0>(tmp) = eid;
-                return Traits::fillInfo(eid,tmp);
-            };
-
-            // Convert tmp pointers into references and push it onto rv.
-            auto push_tmp = [&]()
-            {
-                return rv.emplace_back(move(tmp));
-            };
-
-            // Inspects eid for query match and pushes it onto rv if it matches.
-            auto inspect_and_push = [&](EntID eid)
-            {
-                if (check_negatives(eid) && fill_tmp(eid))
-                {
-                    push_tmp();
-                }
-            };
-
-            // Query loop
-            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
-            {
-                EntID eid;
-                eid.iter = i;
-                inspect_and_push(eid);
-            }
+            visit([&](EntID eid, typename Traits::template MakeParam<Ts>... params){
+                Traits::emplace_back(rv, eid, params...);
+            });
 
             return rv;
-        }
-
-        template <typename Visitor>
-        void visit(Visitor&& visitor) {
-            using Traits = VisitorTraits<Database, Visitor>;
-
-            // Query loop
-            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
-            {
-                EntID eid;
-                eid.iter = i;
-                Traits::apply(eid,std::forward<Visitor>(visitor));
-            }
         }
 
     // status functions
