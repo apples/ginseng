@@ -16,130 +16,6 @@ namespace _detail {
 
     using namespace std;
 
-// Forward Declarations
-
-    template <template <typename> class AllocatorT>
-    class Database;
-
-// Traits
-
-    // PointerToReference
-
-        template <typename T>
-        struct PointerToReference;
-
-        template <typename T>
-        using PointerToReference_t = typename PointerToReference<T>::type;
-
-        template <typename T>
-        struct PointerToReference<T*>
-        {
-            using type = T&;
-        };
-
-    // SFINAE
-
-        template <bool B>
-        using SFINAE = typename enable_if<B,void>::type;
-
-// IndexList
-
-    template <size_t... Is>
-    struct IndexList
-    {};
-
-    // MakeIndexList
-
-        template <size_t N, size_t... Is>
-        struct MakeIndexList
-        {
-            using type = typename MakeIndexList<N-1, N-1, Is...>::type;
-        };
-
-        template <size_t N>
-        using MakeIndexList_t = typename MakeIndexList<N>::type;
-
-        template <size_t... Is>
-        struct MakeIndexList<0, Is...>
-        {
-            using type = IndexList<Is...>;
-        };
-
-// TypeList
-
-    template <typename... Ts>
-    struct TypeList
-    {};
-
-    // TypeListTuple
-
-        template <typename>
-        struct TypeListTuple;
-
-        template <typename T>
-        using TypeListTuple_t = typename TypeListTuple<T>::type;
-
-        template <typename... Ts>
-        struct TypeListTuple<TypeList<Ts...>>
-        {
-            using type = tuple<Ts...>;
-        };
-
-    // TypeListCat
-
-        template <typename, typename>
-        struct TypeListCat;
-
-        template <typename T, typename U>
-        using TypeListCat_t = typename TypeListCat<T,U>::type;
-
-        template <typename... Ts, typename... Us>
-        struct TypeListCat<TypeList<Ts...>, TypeList<Us...>>
-        {
-            using type = TypeList<Ts..., Us...>;
-        };
-
-    // TypeListFilter
-
-        template <typename T, template <typename> class F, typename = void>
-        struct TypeListFilter;
-
-        template <typename T, template <typename> class F>
-        using TypeListFilter_t = typename TypeListFilter<T,F>::type;
-
-        template <typename T, typename... Us, template <typename> class F>
-        struct TypeListFilter<TypeList<T,Us...>, F, SFINAE<F<T>::value>>
-        {
-            using type = TypeListCat_t<TypeList<T>,
-                TypeListFilter_t<TypeList<Us...>, F>>;
-        };
-
-        template <typename T, typename... Us, template <typename> class F>
-        struct TypeListFilter<TypeList<T,Us...>, F, SFINAE<!F<T>::value>>
-        {
-            using type = TypeListFilter_t<TypeList<Us...>, F>;
-        };
-
-        template <template <typename> class F>
-        struct TypeListFilter<TypeList<>, F, void>
-        {
-            using type = TypeList<>;
-        };
-
-    // TypeListImbue
-
-        template <typename T, template <typename> class U>
-        struct TypeListImbue;
-
-        template <typename T, template <typename> class U>
-        using TypeListImbue_t = typename TypeListImbue<T,U>::type;
-
-        template <typename... Ts, template <typename> class U>
-        struct TypeListImbue<TypeList<Ts...>, U>
-        {
-            using type = TypeList<U<Ts>...>;
-        };
-
 // GUID
 
     using GUID = int_fast64_t;
@@ -256,58 +132,13 @@ namespace _detail {
 
 // Queries
 
-    // Not
+    template <typename T>
+    struct Not
+    {};
 
-        template <typename... Ts>
-        struct Not
-        {};
-
-        // IsNot
-
-            template <typename T>
-            struct IsNot : false_type
-            {};
-
-            template <typename... Ts>
-            struct IsNot<Not<Ts...>> : true_type
-            {};
-
-        // FlattenNots
-
-            template <typename T>
-            struct FlattenNots;
-
-            template <typename T>
-            using FlattenNots_t = typename FlattenNots<T>::type;
-
-            template <typename... Ts, typename... Us>
-            struct FlattenNots<TypeList<Not<Ts...>, Us...>>
-            {
-                using type = TypeListCat_t<TypeList<Ts...>,
-                    FlattenNots_t<TypeList<Us...>>>;
-            };
-
-            template <>
-            struct FlattenNots<TypeList<>>
-            {
-                using type = TypeList<>;
-            };
-
-    // tag
-
-        template <typename T>
-        struct Tag
-        {};
-
-    // IsPositive
-
-        template <typename T>
-        struct IsPositive : true_type
-        {};
-
-        template <typename... Ts>
-        struct IsPositive<Not<Ts...>> : false_type
-        {};
+    template <typename T>
+    struct Tag
+    {};
 
     // Traits
 
