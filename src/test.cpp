@@ -175,3 +175,22 @@ TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
     REQUIRE(num_visited == 0);
 }
 
+TEST_CASE("ComInfo can be used instead of components", "[ginseng]")
+{
+    DB db;
+
+    struct Data {};
+
+    auto ent = db.makeEntity();
+    auto info = db.makeComponent(ent,Data{});
+
+    int visited = 0;
+    DB::ComInfo<Data> info2;
+    db.visit([&](DB::ComInfo<Data>& data){
+        ++visited;
+        info2 = data;
+    });
+    REQUIRE(visited == 1);
+    REQUIRE(info2.id() == info.id());
+}
+

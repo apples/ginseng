@@ -293,6 +293,12 @@ namespace _detail {
                 using type = TypeList<>;
             };
 
+    // tag
+
+        template <typename T>
+        struct Tag
+        {};
+
     // IsPositive
 
         template <typename T>
@@ -363,56 +369,90 @@ namespace _detail {
                 }
         };
 
+        struct ComponentTags
+        {
+            struct normal {};
+            struct tagged {};
+            struct inverted {};
+            struct info {};
+        };
+
+        template <template <typename> class ComInfo, typename Component>
+        struct ComponentTraits
+        {
+            using tag = ComponentTags::normal;
+            using com = Component;
+        };
+
+        template <template <typename> class ComInfo, typename Component>
+        struct ComponentTraits<ComInfo,ComInfo<Component>>
+        {
+            using tag = ComponentTags::info;
+            using com = Component;
+        };
+
+        template <template <typename> class ComInfo, typename Component>
+        struct ComponentTraits<ComInfo,Tag<Component>>
+        {
+            using tag = ComponentTags::tagged;
+            using com = Tag<Component>;
+        };
+
+        template <template <typename> class ComInfo, typename Component>
+        struct ComponentTraits<ComInfo,Not<Component>>
+        {
+            using tag = ComponentTags::inverted;
+            using com = Component;
+        };
+
         template <typename DB, typename EntID, typename... Components>
         struct Applier;
 
         template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
         struct Applier<DB,EntID,HeadCom,TailComs...>
         {
-            template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::normal, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<HeadCom>())
+                if (auto com_info = eid.get<typename Traits::com>())
                 {
                     return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info.data());
                 }
             }
-        };
 
-        template <typename DB, typename EntID, typename... TailComs>
-        struct Applier<DB,EntID,EntID,TailComs...>
-        {
-            template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::inverted, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
-            }
-        };
-
-        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
-        struct Applier<DB,EntID,Not<HeadCom>,TailComs...>
-        {
-            template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
-            {
-                if (auto com_info = eid.get<HeadCom>())
+                if (auto com_info = eid.get<typename Traits::com>())
                 {
                     return;
                 }
-                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<HeadCom>{});
+                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<typename Traits::com>{});
             }
-        };
 
-        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
-        struct Applier<DB,EntID,typename DB::template ComInfo<HeadCom>,TailComs...>
-        {
-            template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::info, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<HeadCom>())
+                if (auto com_info = eid.get<typename Traits::com>())
                 {
                     return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info);
                 }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::tagged, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (auto com_info = eid.get<typename Traits::com>())
+                {
+                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., typename Traits::com{});
+                }
+            }
+
+            template <typename Visitor, typename... Args>
+            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                using Traits = ComponentTraits<DB::template ComInfo,HeadCom>;
+                return helper<Traits>(typename Traits::tag{}, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
             }
         };
 
@@ -571,7 +611,6 @@ class Database
                 template <typename T>
                 ComInfo<T> get() const
                 {
-                    T* ptr = nullptr;
                     ComID cid;
 
                     GUID guid = getGUID<T>();
@@ -580,14 +619,14 @@ class Database
                     auto pos=lower_bound(begin(comvec), end(comvec), guid);
 
                     cid.eid = *this;
+                    cid.iter = pos;
 
                     if (pos != end(comvec) && pos->getGUID() == guid)
                     {
-                        cid.iter = pos;
-                        ptr = &cid.template cast<T>();
+                        return {cid};
                     }
 
-                    return {ptr,cid};
+                    return {};
                 }
 
                 /*! Query the Entity for multiple components.
@@ -717,8 +756,8 @@ class Database
             Com* ptr = nullptr;
             ComID cid;
 
-            ComInfo(Com* p, ComID i)
-                : ptr(p)
+            ComInfo(ComID i)
+                : ptr(&i.template cast<Com>())
                 , cid(i)
             {}
 
@@ -763,6 +802,57 @@ class Database
                 {
                     return cid;
                 }
+        };
+
+        /*! Component Info for Tags
+         *
+         * A handle to a component of known type.
+         * Provides the component's ComID.
+         *
+         * @tparam Com Component type.
+         */
+        template <typename Com>
+        class ComInfo<Tag<Com>>
+        {
+            friend class Database;
+
+            bool is_valid = false;
+            ComID cid;
+
+            ComInfo(ComID i)
+                    : is_valid(true)
+                    , cid(i)
+            {}
+
+        public:
+
+            using type = Com;
+
+            ComInfo() = default;
+
+            /*! Test for validity.
+             *
+             * True if this ComInfo points to a component.
+             * False otherwise.
+             *
+             * @return True if valid.
+             */
+            explicit operator bool() const
+            {
+                return is_valid;
+            }
+
+            /*! Get component ID.
+             *
+             * @warning
+             * Behaviour is undefined if this ComInfo is invalid.
+             *
+             * @return A ComID handle for this component.
+             */
+            ComID const& id() const
+            {
+                return cid;
+            }
         };
 
     // Entity functions
@@ -868,9 +958,46 @@ class Database
                 cid.iter = comvec.emplace(pos, guid, move(ptr));
             }
 
-            T* comptr = &cid.template cast<T>();
+            return {cid};
+        }
 
-            return {comptr,cid};
+        /*! Create new component.
+         *
+         * Creates a new component from the given value and associates it with
+         * the given Entity.
+         * If a component of the same type already exists, it will be
+         * overwritten.
+         *
+         * @warning
+         * All ComIDs associated with components of the given Entity will be
+         * invalidated.
+         *
+         * @param eid Entity to attach new component to.
+         * @param com Component value.
+         * @return ComInfo for the new component.
+         */
+        template <typename T>
+        ComInfo<Tag<T>> makeComponent(EntID eid, Tag<T> com)
+        {
+            ComID cid;
+            GUID guid = getGUID<Tag<T>>();
+
+            auto& comvec = eid.iter->components;
+
+            auto pos = lower_bound(begin(comvec), end(comvec), guid);
+
+            cid.eid = eid;
+
+            if (pos != end(comvec) && pos->getGUID() == guid)
+            {
+                cid.iter = pos;
+            }
+            else
+            {
+                cid.iter = comvec.emplace(pos, guid, nullptr);
+            }
+
+            return {cid};
         }
 
         /*! Erase a component.
@@ -1065,6 +1192,7 @@ using _detail::ComponentData;
 using _detail::Entity;
 using _detail::Database;
 using _detail::Not;
+using _detail::Tag;
 
 } // namespace Ginseng
 
