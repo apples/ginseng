@@ -32,39 +32,39 @@ TEST_CASE("Query compiles", "[ginseng]")
     make_ent(true, true);
 
     {
-        auto q = db.query<>().size();
-        REQUIRE(q == 10);
+        std::vector<std::tuple<DB::EntID>> q = db.query<>();
+        REQUIRE(q.size() == 10);
     }
     {
-        auto q = db.query<Data1>().size();
-        REQUIRE(q == 7);
+        std::vector<std::tuple<DB::EntID,Data1&>> q = db.query<Data1>();
+        REQUIRE(q.size() == 7);
     }
     {
-        auto q = db.query<Data2>().size();
-        REQUIRE(q == 6);
+        std::vector<std::tuple<DB::EntID,Data2&>> q = db.query<Data2>();
+        REQUIRE(q.size() == 6);
     }
     {
-        auto q = db.query<Data1, Data2>().size();
-        REQUIRE(q == 4);
+        std::vector<std::tuple<DB::EntID,Data1&,Data2&>> q = db.query<Data1, Data2>();
+        REQUIRE(q.size() == 4);
     }
     {
-        auto q = db.query<Not<Data1>>().size();
-        REQUIRE(q == 3);
+        std::vector<std::tuple<DB::EntID,Not<Data1>>> q = db.query<Not<Data1>>();
+        REQUIRE(q.size() == 3);
     }
     {
-        auto q = db.query<Not<Data2>>().size();
-        REQUIRE(q == 4);
+        std::vector<std::tuple<DB::EntID,Not<Data2>>> q = db.query<Not<Data2>>();
+        REQUIRE(q.size() == 4);
     }
     {
-        auto q = db.query<Data1, Not<Data2>>().size();
-        REQUIRE(q == 3);
+        std::vector<std::tuple<DB::EntID,DB::ComInfo<Data1>,Not<Data2>>> q = db.query<DB::ComInfo<Data1>, Not<Data2>>();
+        REQUIRE(q.size() == 3);
     }
     {
-        auto q = db.query<Data2, Not<Data1>>().size();
-        REQUIRE(q == 2);
+        std::vector<std::tuple<DB::EntID,DB::ComInfo<Data2>,Not<Data1>>> q = db.query<DB::ComInfo<Data2>, Not<Data1>>();
+        REQUIRE(q.size() == 2);
     }
     {
-        auto q = db.query<Not<Data1>, Not<Data2>>().size();
-        REQUIRE(q == 1);
+        std::vector<std::tuple<DB::EntID,Not<Data1>,Not<Data2>>> q = db.query<Not<Data1>, Not<Data2>>();
+        REQUIRE(q.size() == 1);
     }
 }

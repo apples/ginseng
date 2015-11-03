@@ -341,42 +341,15 @@ namespace _detail {
             };
 
             template <typename T>
+            struct ComRef<typename DB::template ComInfo<T>>
+            {
+                using type = typename DB::template ComInfo<T>;
+            };
+
+            template <typename T>
             using MakeParam = typename ComRef<T>::type;
 
-            using Tuple = decltype(std::tuple_cat(std::declval<std::tuple<typename DB::EntID>>(),std::declval<typename FilterComponents<Components...>::type>()));
-
-            template <typename F>
-            static void emplace_helper(F f)
-            {
-                f();
-            };
-
-            template <typename F, typename T, typename... Ts>
-            static void emplace_helper(F f, T&& t, Ts&&... ts)
-            {
-                emplace_helper([f,&t](auto&&... parms){
-                    f(std::forward<T>(t), std::forward<decltype(parms)>(parms)...);
-                }, ts...);
-            };
-
-            template <typename F, typename T, typename... Ts>
-            static void emplace_helper(F f, Not<T> t, Ts&&... ts)
-            {
-                emplace_helper(f, ts...);
-            };
-
-            template <typename F, typename T, typename... Ts>
-            static void emplace_helper(F f, Tag<T> t, Ts&&... ts)
-            {
-                emplace_helper(f, ts...);
-            };
-
-            template <typename... Ts>
-            static void emplace_back(std::vector<Tuple>& vec, typename DB::EntID eid, Ts&&... ts)
-            {
-                auto emplacer = [&vec,&eid](auto&&... ts){ vec.emplace_back(eid, std::forward<decltype(ts)>(ts)...); };
-                emplace_helper(emplacer, std::forward<Ts>(ts)...);
-            }
+            using Tuple = std::tuple<typename DB::EntID, MakeParam<Components>...>;
         };
 
 /*! Database
@@ -959,7 +932,7 @@ class Database
             std::vector<typename Traits::Tuple> rv;
 
             visit([&](EntID eid, typename Traits::template MakeParam<Ts>... params){
-                Traits::emplace_back(rv, eid, params...);
+                rv.emplace_back(eid, std::forward<decltype(params)>(params)...);
             });
 
             return rv;
