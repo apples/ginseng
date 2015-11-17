@@ -876,7 +876,7 @@ class Database
             {
                 EntID eid;
                 eid.iter = i;
-                Traits::apply(eid,std::forward<Visitor>(visitor));
+                Traits::apply(eid,visitor);
             }
         }
 
