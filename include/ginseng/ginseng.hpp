@@ -292,66 +292,6 @@ namespace _detail {
         struct VisitorTraits<DB, R(Visitor::*)(Ts...)&&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
         {};
 
-        template <typename... Coms>
-        struct FilterComponents;
-
-        template <>
-        struct FilterComponents<>
-        {
-            using type = std::tuple<>;
-        };
-
-        template <typename Head, typename... Tail>
-        struct FilterComponents<Head,Tail...>
-        {
-            using type = decltype(std::tuple_cat(std::declval<std::tuple<Head>>(),std::declval<typename FilterComponents<Tail...>::type>()));
-        };
-
-        template <typename Head, typename... Tail>
-        struct FilterComponents<Tag<Head>,Tail...>
-        {
-            using type = typename FilterComponents<Tail...>::type;
-        };
-
-        template <typename Head, typename... Tail>
-        struct FilterComponents<Not<Head>,Tail...>
-        {
-            using type = typename FilterComponents<Tail...>::type;
-        };
-
-        template <typename DB, typename... Components>
-        struct QueryTraits
-        {
-            template <typename T>
-            struct ComRef
-            {
-                using type = T&;
-            };
-
-            template <typename T>
-            struct ComRef<Tag<T>>
-            {
-                using type = Tag<T>;
-            };
-
-            template <typename T>
-            struct ComRef<Not<T>>
-            {
-                using type = Not<T>;
-            };
-
-            template <typename T>
-            struct ComRef<typename DB::template ComInfo<T>>
-            {
-                using type = typename DB::template ComInfo<T>;
-            };
-
-            template <typename T>
-            using MakeParam = typename ComRef<T>::type;
-
-            using Tuple = std::tuple<typename DB::EntID, MakeParam<Components>...>;
-        };
-
 /*! Database
  *
  * An Entity component Database. Uses the given allocator to allocate
@@ -876,7 +816,7 @@ class Database
             {
                 EntID eid;
                 eid.iter = i;
-                Traits::apply(eid,std::forward<Visitor>(visitor));
+                Traits::apply(eid,visitor);
             }
         }
 
@@ -884,55 +824,23 @@ class Database
 
         /*! Query the Database.
          *
-         * Queries the Database for Entities that match the given template
-         * properties.
+         * Queries the Database for Entities that match the given template parameters.
          *
-         * Template properties can be one of the following:
+         * Returns a `std::vector<std::tuple<Ts...>>` where each element is a tuple of values filled by calling
+         * `visit([](Ts...){})` and forwarding the visitor's parameters to each tuple.
          *
-         * - A component type.
-         * - A list of component types in `Not<...>`.
+         * There will be one element in the returned vector for each entity visited.
          *
-         * If a property is a component type, only Entities that contain that
-         * component will be returned.
-         *
-         * If a property is a list of component types in `Not<...>`, only
-         * Entities that do not contain those types will be returned.
-         *
-         * A vector of query elements is returned.
-         *
-         * A query element is a tuple containing an EntID and a series of
-         * component elements.
-         *
-         * A component element is a pair of reference-to-component and ComID.
-         *
-         * There will be a component element for each component type given in
-         * the property list.
-         *
-         * For example, if `db.query<X,Y,Not<Z>>()` is called, its return type
-         * will be determined as follows:
-         *
-         * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~{.cpp}
-         * template <typename T> using ComEle = std::pair<T&,ComID>;
-         * using QueryEle = std::tuple<EntID,ComEle<X>,ComEle<Y>>;
-         * using QueryResult = std::vector<QueryEle>;
-         * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-         *
-         * It is important to note that the return type of
-         * `db.query<X,Y,Not<Z>>()` will be the same as the return type of
-         * `db.query<X,Y>()`.
-         *
-         * @tparam Ts Query properties.
+         * @tparam Ts Query parameters.
          * @return Query results.
          */
         template <typename... Ts>
-        std::vector<typename QueryTraits<Database,Ts...>::Tuple> query()
+        std::vector<std::tuple<Ts...>> query()
         {
-            using Traits = QueryTraits<Database,Ts...>;
+            std::vector<std::tuple<Ts...>> rv;
 
-            std::vector<typename Traits::Tuple> rv;
-
-            visit([&](EntID eid, typename Traits::template MakeParam<Ts>... params){
-                rv.emplace_back(eid, std::forward<decltype(params)>(params)...);
+            visit([&](Ts... params){
+                rv.emplace_back(std::forward<Ts>(params)...);
             });
 
             return rv;
