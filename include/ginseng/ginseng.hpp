@@ -330,7 +330,7 @@ class Database
         {
             friend class Database;
 
-            typename AllocList<Entity>::iterator iter;
+            typename AllocList<Entity>::const_iterator iter;
 
             public:
 
@@ -418,7 +418,7 @@ class Database
             friend class Database;
 
             EntID eid;
-            Entity::ComponentVec::iterator iter;
+            Entity::ComponentVec::const_iterator iter;
 
             public:
 
@@ -677,7 +677,7 @@ class Database
             GUID guid = getGUID<T>();
             AllocatorT<Component<T>> alloc;
 
-            auto& comvec = eid.iter->components;
+            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
 
             auto pos = lower_bound(begin(comvec), end(comvec), guid);
 
@@ -809,6 +809,19 @@ class Database
 
         template <typename Visitor>
         void visit(Visitor&& visitor) {
+            using Traits = VisitorTraits<Database, Visitor>;
+
+            // Query loop
+            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+            {
+                EntID eid;
+                eid.iter = i;
+                Traits::apply(eid,visitor);
+            }
+        }
+
+        template <typename Visitor>
+        void visit(Visitor&& visitor) const {
             using Traits = VisitorTraits<Database, Visitor>;
 
             // Query loop
