@@ -248,6 +248,7 @@ namespace _detail {
             template <typename Visitor, typename... Args>
             static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
             {
+                (void)eid;
                 std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
             }
         };
