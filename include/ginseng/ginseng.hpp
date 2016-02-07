@@ -194,7 +194,7 @@ namespace _detail {
             template <typename Traits, typename Visitor, typename... Args>
             static void helper(ComponentTags::normal, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<typename Traits::com>())
+                if (auto com_info = eid.template get<typename Traits::com>())
                 {
                     return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info.data());
                 }
@@ -203,7 +203,7 @@ namespace _detail {
             template <typename Traits, typename Visitor, typename... Args>
             static void helper(ComponentTags::inverted, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<typename Traits::com>())
+                if (auto com_info = eid.template get<typename Traits::com>())
                 {
                     return;
                 }
@@ -213,7 +213,7 @@ namespace _detail {
             template <typename Traits, typename Visitor, typename... Args>
             static void helper(ComponentTags::info, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<typename Traits::com>())
+                if (auto com_info = eid.template get<typename Traits::com>())
                 {
                     return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info);
                 }
@@ -222,7 +222,7 @@ namespace _detail {
             template <typename Traits, typename Visitor, typename... Args>
             static void helper(ComponentTags::tagged, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.get<typename Traits::com>())
+                if (auto com_info = eid.template get<typename Traits::com>())
                 {
                     return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., typename Traits::com{});
                 }
