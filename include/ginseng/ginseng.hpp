@@ -649,7 +649,7 @@ class Database
          */
         Entity displaceEntity(EntID eid)
         {
-            Entity rv = move(*eid.iter);
+            Entity rv = move(*entities.erase(eid.iter,eid.iter));
             entities.erase(eid.iter);
             return rv;
         }
@@ -719,7 +719,7 @@ class Database
             ComID cid;
             GUID guid = getGUID<Tag<T>>();
 
-            auto& comvec = eid.iter->components;
+            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
 
             auto pos = lower_bound(begin(comvec), end(comvec), guid);
 
@@ -749,7 +749,7 @@ class Database
          */
         void eraseComponent(ComID cid)
         {
-            auto& comvec = cid.eid.iter->components;
+            auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
             comvec.erase(cid.iter);
         }
 
@@ -769,7 +769,7 @@ class Database
         ComID emplaceComponent(EntID eid, ComponentData&& dat)
         {
             ComID rv;
-            auto& comvec = eid.iter->components;
+            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
             GUID guid = dat.getGUID();
 
             auto pos = lower_bound(begin(comvec), end(comvec), dat);
@@ -802,8 +802,8 @@ class Database
          */
         ComponentData displaceComponent(ComID cid)
         {
-            auto& comvec = cid.eid.iter->components;
-            ComponentData rv = move(*cid.iter);
+            auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
+            ComponentData rv = move(*comvec.erase(cid.iter,cid.iter));
             comvec.erase(cid.iter);
             return rv;
         }
