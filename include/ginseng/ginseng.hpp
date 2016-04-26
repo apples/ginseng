@@ -108,6 +108,12 @@ namespace _detail {
         return a.getGUID() < guid;
     }
 
+    template <typename T>
+    bool operator<(GUID guid, GUIDPair<T> const& a) noexcept
+    {
+        return guid < a.getGUID();
+    }
+
 // Entity
 
     using ComponentData = GUIDPair<shared_ptr<AbstractComponent>>;
@@ -348,19 +354,14 @@ class Database
                 template <typename T>
                 ComInfo<T> get() const
                 {
-                    ComID cid;
-
                     GUID guid = getGUID<T>();
                     auto& comvec = iter->components;
 
                     auto pos=lower_bound(begin(comvec), end(comvec), guid);
 
-                    cid.eid = *this;
-                    cid.iter = pos;
-
                     if (pos != end(comvec) && pos->getGUID() == guid)
                     {
-                        return {cid};
+                        return {ComID(*this,pos)};
                     }
 
                     return {};
@@ -420,6 +421,9 @@ class Database
 
             EntID eid;
             Entity::ComponentVec::const_iterator iter;
+
+            ComID() = default;
+            ComID(EntID eid, Entity::ComponentVec::const_iterator iter) : eid(eid), iter(iter) {}
 
             public:
 
@@ -491,11 +495,11 @@ class Database
             friend class Database;
 
             Com* ptr = nullptr;
-            ComID cid;
+            EntID eid;
 
-            ComInfo(ComID i)
-                : ptr(&i.template cast<Com>())
-                , cid(i)
+            ComInfo(ComID id)
+                : ptr(&id.template cast<Com>())
+                , eid(id.getEID())
             {}
 
             public:
@@ -535,9 +539,12 @@ class Database
                  *
                  * @return A ComID handle for this component.
                  */
-                ComID const& id() const
+                ComID id() const
                 {
-                    return cid;
+                    auto& comvec = eid.iter->components;
+                    GUID guid = getGUID<Com>();
+                    auto pos = lower_bound(begin(comvec), end(comvec), guid);
+                    return ComID(eid,pos);
                 }
         };
 
@@ -554,11 +561,11 @@ class Database
             friend class Database;
 
             bool is_valid = false;
-            ComID cid;
+            EntID eid;
 
-            ComInfo(ComID i)
+            ComInfo(ComID id)
                     : is_valid(true)
-                    , cid(i)
+                    , eid(id.getEID())
             {}
 
         public:
@@ -586,9 +593,12 @@ class Database
              *
              * @return A ComID handle for this component.
              */
-            ComID const& id() const
+            ComID id() const
             {
-                return cid;
+                auto& comvec = eid.iter->components;
+                GUID guid = getGUID<Tag<Com>>();
+                auto pos = lower_bound(begin(comvec), end(comvec), guid);
+                return ComID(eid,pos);
             }
         };
 
