@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <type_traits>
+#include <typeindex>
 #include <vector>
 #include <list>
 #include <iterator>
@@ -15,31 +16,6 @@ namespace Ginseng {
 namespace _detail {
 
     using namespace std;
-
-// GUID
-
-    using GUID = int_fast64_t;
-
-    inline GUID& instGUID()
-    {
-        static GUID guid = 0;
-        return guid;
-    }
-
-    inline GUID nextGUID()
-    {
-        GUID rv = ++instGUID();
-        if (rv == numeric_limits<GUID>::max())
-            throw;
-        return rv;
-    }
-
-    template <typename T>
-    GUID getGUID()
-    {
-        static GUID guid = nextGUID();
-        return guid;
-    }
 
 // Component
 
@@ -72,15 +48,15 @@ namespace _detail {
     template <typename T>
     class GUIDPair
     {
-        pair<GUID,T> val;
+        pair<std::type_index,T> val;
 
         public:
 
-            GUIDPair(GUID guid, T t)
+            GUIDPair(std::type_index guid, T t)
                 : val(guid, move(t))
             {}
 
-            GUID getGUID() const noexcept
+            std::type_index getGUID() const noexcept
             {
                 return val.first;
             }
@@ -103,13 +79,13 @@ namespace _detail {
     }
 
     template <typename T>
-    bool operator<(GUIDPair<T> const& a, GUID guid) noexcept
+    bool operator<(GUIDPair<T> const& a, std::type_index guid) noexcept
     {
         return a.getGUID() < guid;
     }
 
     template <typename T>
-    bool operator<(GUID guid, GUIDPair<T> const& a) noexcept
+    bool operator<(std::type_index guid, GUIDPair<T> const& a) noexcept
     {
         return guid < a.getGUID();
     }
@@ -354,7 +330,7 @@ class Database
                 template <typename T>
                 ComInfo<T> get() const
                 {
-                    GUID guid = getGUID<T>();
+                    auto guid = std::type_index(typeid(T));
                     auto& comvec = iter->components;
 
                     auto pos=lower_bound(begin(comvec), end(comvec), guid);
@@ -542,7 +518,7 @@ class Database
                 ComID id() const
                 {
                     auto& comvec = eid.iter->components;
-                    GUID guid = getGUID<Com>();
+                    auto guid = std::type_index(typeid(Com));
                     auto pos = lower_bound(begin(comvec), end(comvec), guid);
                     return ComID(eid,pos);
                 }
@@ -596,7 +572,7 @@ class Database
             ComID id() const
             {
                 auto& comvec = eid.iter->components;
-                GUID guid = getGUID<Tag<Com>>();
+                auto guid = std::type_index(typeid(Tag<Com>));
                 auto pos = lower_bound(begin(comvec), end(comvec), guid);
                 return ComID(eid,pos);
             }
@@ -685,7 +661,7 @@ class Database
         ComInfo<T> makeComponent(EntID eid, T com)
         {
             ComID cid;
-            GUID guid = getGUID<T>();
+            auto guid = std::type_index(typeid(T));
             AllocatorT<Component<T>> alloc;
 
             auto& comvec = entities.erase(eid.iter,eid.iter)->components;
@@ -727,7 +703,7 @@ class Database
         ComInfo<Tag<T>> makeComponent(EntID eid, Tag<T> com)
         {
             ComID cid;
-            GUID guid = getGUID<Tag<T>>();
+            auto guid = std::type_index(typeid(Tag<T>));
 
             auto& comvec = entities.erase(eid.iter,eid.iter)->components;
 
@@ -780,7 +756,7 @@ class Database
         {
             ComID rv;
             auto& comvec = entities.erase(eid.iter,eid.iter)->components;
-            GUID guid = dat.getGUID();
+            auto guid = dat.getGUID();
 
             auto pos = lower_bound(begin(comvec), end(comvec), dat);
 
