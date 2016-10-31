@@ -114,10 +114,18 @@ namespace _detail {
 
 // Queries
 
+    /*! Visitor parameter inverter
+     *
+     * When used as a visitor parameter or query parameter, inverts the matching logic for that parameter.
+     */
     template <typename T>
     struct Not
     {};
 
+    /*! Tag component
+     *
+     * When a tag component is stored in an entity, only the fact that it exists is recorded, no data is stored.
+     */
     template <typename T>
     struct Tag
     {};
@@ -807,6 +815,29 @@ class Database
             }
         }
 
+        /*! Visit the Database.
+         *
+         * Visit the Entities in the Database that match the given function's parameter types.
+         *
+         * The following parameter categories are accepted:
+         *
+         * - Component Data: Any `T` except rvalue-references, matches entities that have component `T`.
+         * - Component Tag: `Tag<T>` value, matches entities that have component `Tag<T>`.
+         * - Component Info: `ComInfo<T>` value, matches entities that have component `T`.
+         * - Inverted: `Not<T>` value, matches entities that do *not* have component `T`.
+         * - EntID: Matches all entities.
+         *
+         * Component Data and Info parameters will refer to the entity's matching component.
+         * EntID parameters will contain the entity's EntID.
+         *
+         * Entities that do not match all given parameter conditions will be skipped.
+         *
+         * @warning Entities are visited in no particular order, so adding and removing entities from the visitor
+         *          function could result in non-deterministic behavior.
+         *
+         * @tparam Visitor Visitor function type.
+         * @param visitor Visitor function.
+         */
         template <typename Visitor>
         void visit(Visitor&& visitor) const {
             using Traits = VisitorTraits<Database, Visitor>;
@@ -848,6 +879,10 @@ class Database
 
     // status functions
 
+        /*! Get the number of entities in the Database.
+         *
+         * @return Number of entities in the Database.
+         */
         auto size() const -> decltype(entities.size())
         {
             return entities.size();
