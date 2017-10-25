@@ -2,13 +2,15 @@
 #define GINSENG_GINSENG_HPP
 
 #include <algorithm>
-#include <type_traits>
-#include <typeindex>
-#include <vector>
-#include <list>
 #include <iterator>
-#include <tuple>
+#include <list>
 #include <memory>
+#include <tuple>
+#include <typeindex>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+
 #include <cstddef>
 
 namespace Ginseng {
@@ -16,6 +18,45 @@ namespace Ginseng {
 namespace _detail {
 
     using namespace std;
+
+// TypeList
+
+    template <typename...>
+    struct TypeList
+    {};
+
+    template <typename A, typename B>
+    struct TypeListCat;
+
+    template <typename A, typename B>
+    using TypeListCat_t = typename TypeListCat<A,B>::type;
+
+    template <typename... As, typename... Bs>
+    struct TypeListCat<TypeList<As...>, TypeList<Bs...>>
+    {
+        using type = TypeList<As..., Bs...>;
+    };
+
+    template <typename TL>
+    struct TypeListRemoveVoid
+    {
+        using type = TypeList<>;
+    };
+
+    template <typename TL>
+    using TypeListRemoveVoid_t = typename TypeListRemoveVoid<TL>::type;
+
+    template <typename... Ts>
+    struct TypeListRemoveVoid<TypeList<void, Ts...>>
+    {
+        using type = TypeListRemoveVoid_t<TypeList<Ts...>>;
+    };
+
+    template <typename T, typename... Ts>
+    struct TypeListRemoveVoid<TypeList<T, Ts...>>
+    {
+        using type = TypeListCat_t<TypeList<T>, TypeListRemoveVoid_t<TypeList<Ts...>>>;
+    };
 
 // Component
 
@@ -130,7 +171,7 @@ namespace _detail {
     struct Tag
     {};
 
-    // Traits
+    // ComponentTraits
 
         struct ComponentTags
         {
@@ -146,6 +187,7 @@ namespace _detail {
         {
             using tag = ComponentTags::normal;
             using com = Component;
+            using key = const Component&;
         };
 
         template <typename DB, typename Component, template <typename> class ComInfo>
@@ -153,6 +195,7 @@ namespace _detail {
         {
             using tag = ComponentTags::info;
             using com = Component;
+            using key = void;
         };
 
         template <typename DB, typename Component, template <typename> class ComInfo>
@@ -160,6 +203,7 @@ namespace _detail {
         {
             using tag = ComponentTags::tagged;
             using com = Tag<Component>;
+            using key = Tag<Component>;
         };
 
         template <typename DB, typename Component, template <typename> class ComInfo>
@@ -167,13 +211,46 @@ namespace _detail {
         {
             using tag = ComponentTags::inverted;
             using com = Component;
+            using key = Not<Component>;
         };
 
         template <typename DB, template <typename> class ComInfo>
         struct ComponentTraits<DB,typename DB::EntID,ComInfo>
         {
             using tag = ComponentTags::eid;
+            using com = void;
+            using key = void;
         };
+
+    // FirstComparable
+
+        template <typename DB, typename Coms, typename ComTags>
+        struct FirstComparable
+        {
+            using type = typename DB::EntID;
+        };
+
+        template <typename DB, typename... Coms>
+        using FirstComparable_t = typename FirstComparable<DB, TypeList<Coms...>, TypeList<typename ComponentTraits<DB, Coms>::tag...>>::type;
+
+        template <typename DB, typename HeadCom, typename... Coms, typename... ComTags>
+        struct FirstComparable<DB, TypeList<HeadCom, Coms...>, TypeList<ComponentTags::normal, ComTags...>>
+        {
+            using type = typename ComponentTraits<DB, HeadCom>::com;
+        };
+
+        template <typename DB, typename HeadCom, typename... Coms, typename HeadTag, typename... ComTags>
+        struct FirstComparable<DB, TypeList<HeadCom, Coms...>, TypeList<HeadTag, ComTags...>>
+        {
+            using type = FirstComparable_t<DB, Coms...>;
+        };
+
+    // SystemKey
+
+        template <typename DB, typename... Coms>
+        using SystemKey_t = TypeListRemoveVoid_t<TypeList<typename ComponentTraits<DB, Coms>::key...>>;
+
+    // Applier
 
         template <typename DB, typename EntID, typename... Components>
         struct Applier;
@@ -243,10 +320,54 @@ namespace _detail {
             }
         };
 
+    // KeyMatcher
+
+        template <typename DB, typename SystemKey>
+        struct KeyMatcher;
+
+        template <typename DB, typename... Keys>
+        struct KeyMatcher<DB, TypeList<Keys...>>
+        {
+            using EntID = typename DB::EntID;
+
+            static bool match(EntID eid)
+            {
+                bool ret = false;
+                Applier<DB,EntID,decay_t<Keys>...>::try_apply(eid,[&](Keys...){ret = true;});
+                return ret;
+            }
+        };
+
+    // VisitorTraits
+
+        // EntityComparator
+
+            template <typename DB, typename Com>
+            struct EntityComparator
+            {
+                bool operator()(typename DB::EntID left, typename DB::EntID right) const
+                {
+                    return less<>{}(&left.template get<Com>().data(), &right.template get<Com>().data());
+                }
+            };
+
+            template <typename DB>
+            struct EntityComparator<DB, typename DB::EntID>
+            {
+                bool operator()(typename DB::EntID left, typename DB::EntID right) const
+                {
+                    return less<>{}(left, right);
+                }
+            };
+
         template <typename DB, typename... Components>
         struct VisitorTraitsImpl
         {
             using EntID = typename DB::EntID;
+            using SystemKey = SystemKey_t<DB, Components...>;
+            using PrimaryKey = FirstComparable_t<DB, Components...>;
+            using Comparator = EntityComparator<DB, PrimaryKey>;
+            using Matcher = KeyMatcher<DB, SystemKey>;
 
             template <typename Visitor>
             static void apply(EntID eid, Visitor&& visitor)
@@ -283,6 +404,71 @@ namespace _detail {
         struct VisitorTraits<DB, R(Visitor::*)(Ts...)&&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
         {};
 
+// Systems
+
+    template <typename EntID>
+    class System
+    {
+    public:
+        virtual ~System() = 0;
+
+        virtual void update(EntID eid) = 0;
+
+        virtual void remove(EntID eid) = 0;
+
+        virtual const vector<EntID>& get_entities() const = 0;
+    };
+
+    template <typename EntID>
+    System<EntID>::~System() = default;
+
+    template <typename VT>
+    class SystemImpl final : public System<typename VT::EntID>
+    {
+    public:
+        using EntID = typename VT::EntID;
+
+        virtual ~SystemImpl() override final = default;
+
+        virtual void update(EntID eid) override final
+        {
+            auto iter = lower_bound(begin(entities), end(entities), eid, typename VT::Comparator{});
+
+            if (VT::Matcher::match(eid))
+            {
+                if (iter == end(entities) || *iter != eid)
+                {
+                    entities.insert(iter, eid);
+                }
+            }
+            else
+            {
+                if (iter != end(entities) && *iter == eid)
+                {
+                    entities.erase(iter);
+                }
+            }
+        }
+
+        virtual void remove(EntID eid) override final
+        {
+            auto iter = lower_bound(begin(entities), end(entities), eid, typename VT::Comparator{});
+
+            if (iter != end(entities) && *iter == eid)
+            {
+                entities.erase(iter);
+            }
+        }
+
+        virtual const vector<EntID>& get_entities() const override final
+        {
+            return entities;
+        }
+
+    private:
+        vector<EntID> entities;
+    };
+
 /*! Database
  *
  * An Entity component Database. Uses the given allocator to allocate
@@ -297,12 +483,9 @@ namespace _detail {
 template <template <typename> class AllocatorT = allocator>
 class Database
 {
-    template <typename T>
-    using AllocList = list<T, AllocatorT<T>>;
-
-    AllocList<Entity> entities;
-
     public:
+        template <typename T>
+        using AllocList = list<T, AllocatorT<T>>;
 
     // IDs
 
@@ -380,6 +563,18 @@ class Database
                 bool operator==(EntID const& other) const
                 {
                     return (iter == other.iter);
+                }
+
+                /*! Compares this EntID to another for inequivalence.
+                 *
+                 * Returns the inverse of `operator==`.
+                 *
+                 * @param other The EntID to compare to this.
+                 * @return False if EntIDs are equivalent.
+                 */
+                bool operator!=(EntID const& other) const
+                {
+                    return !operator==(other);
                 }
 
                 /*! Compares this EntID to another for ordering.
@@ -598,6 +793,7 @@ class Database
         {
             EntID rv;
             rv.iter = entities.emplace(end(entities));
+            updateSystems(rv);
             return rv;
         }
 
@@ -614,6 +810,7 @@ class Database
          */
         void eraseEntity(EntID eid)
         {
+            removeFromSystems(eid);
             entities.erase(eid.iter);
         }
 
@@ -628,6 +825,7 @@ class Database
         {
             EntID rv;
             rv.iter = entities.emplace(end(entities), move(ent));
+            updateSystems(rv);
             return rv;
         }
 
@@ -643,6 +841,7 @@ class Database
          */
         Entity displaceEntity(EntID eid)
         {
+            removeFromSystems(eid);
             Entity rv = move(*entities.erase(eid.iter,eid.iter));
             entities.erase(eid.iter);
             return rv;
@@ -687,6 +886,7 @@ class Database
             {
                 auto ptr = allocate_shared<Component<T>>(alloc, move(com));
                 cid.iter = comvec.emplace(pos, guid, move(ptr));
+                updateSystems(eid);
             }
 
             return {cid};
@@ -726,6 +926,7 @@ class Database
             else
             {
                 cid.iter = comvec.emplace(pos, guid, nullptr);
+                updateSystems(eid);
             }
 
             return {cid};
@@ -745,6 +946,7 @@ class Database
         {
             auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
             comvec.erase(cid.iter);
+            updateSystems(cid.eid);
         }
 
         /*! Emplace component data into this Database.
@@ -778,6 +980,7 @@ class Database
             else
             {
                 rv.iter = comvec.emplace(pos, move(dat));
+                updateSystems(eid);
             }
 
             return rv;
@@ -799,20 +1002,8 @@ class Database
             auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
             ComponentData rv = move(*comvec.erase(cid.iter,cid.iter));
             comvec.erase(cid.iter);
+            updateSystems(cid.eid);
             return rv;
-        }
-
-        template <typename Visitor>
-        void visit(Visitor&& visitor) {
-            using Traits = VisitorTraits<Database, Visitor>;
-
-            // Query loop
-            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
-            {
-                EntID eid;
-                eid.iter = i;
-                Traits::apply(eid,visitor);
-            }
         }
 
         /*! Visit the Database.
@@ -839,14 +1030,26 @@ class Database
          * @param visitor Visitor function.
          */
         template <typename Visitor>
-        void visit(Visitor&& visitor) const {
+        void visit(Visitor&& visitor)
+        {
             using Traits = VisitorTraits<Database, Visitor>;
 
-            // Query loop
-            for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+            auto& system = systems[typeid(typename Traits::SystemKey)];
+
+            if (!system)
             {
-                EntID eid;
-                eid.iter = i;
+                system = make_unique<SystemImpl<Traits>>();
+
+                for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+                {
+                    EntID eid;
+                    eid.iter = i;
+                    system->update(eid);
+                }
+            }
+
+            for (auto&& eid : system->get_entities())
+            {
                 Traits::apply(eid,visitor);
             }
         }
@@ -883,9 +1086,25 @@ class Database
          *
          * @return Number of entities in the Database.
          */
-        auto size() const -> decltype(entities.size())
+        auto size() const
         {
             return entities.size();
+        }
+
+    private:
+        AllocList<Entity> entities;
+        unordered_map<type_index, unique_ptr<System<EntID>>> systems;
+
+        void updateSystems(EntID eid) {
+            for (auto&& system : systems) {
+                system.second->update(eid);
+            }
+        }
+
+        void removeFromSystems(EntID eid) {
+            for (auto&& system : systems) {
+                system.second->remove(eid);
+            }
         }
 };
 
