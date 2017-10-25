@@ -19,7 +19,7 @@ It is not stable yet, but a 1.0 release is approaching quickly.
 
 ## Dependencies
 
-There are none! Ginseng is a single-header library that only requires C++11.
+There are none! Ginseng is a single-header library that only requires C++14.
 
 ## Example
 
