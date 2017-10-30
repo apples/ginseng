@@ -2,13 +2,9 @@
 #define GINSENG_GINSENG_HPP
 
 #include <algorithm>
-#include <iterator>
-#include <list>
+#include <bitset>
 #include <memory>
-#include <tuple>
-#include <typeindex>
 #include <type_traits>
-#include <unordered_map>
 #include <vector>
 
 #include <cstddef>
@@ -19,145 +15,144 @@ namespace _detail {
 
     using namespace std;
 
-// TypeList
+// TypeGuid
 
-    template <typename...>
-    struct TypeList
-    {};
+    using TypeGuid = size_t;
 
-    template <typename A, typename B>
-    struct TypeListCat;
-
-    template <typename A, typename B>
-    using TypeListCat_t = typename TypeListCat<A,B>::type;
-
-    template <typename... As, typename... Bs>
-    struct TypeListCat<TypeList<As...>, TypeList<Bs...>>
-    {
-        using type = TypeList<As..., Bs...>;
-    };
-
-    template <typename TL>
-    struct TypeListRemoveVoid
-    {
-        using type = TypeList<>;
-    };
-
-    template <typename TL>
-    using TypeListRemoveVoid_t = typename TypeListRemoveVoid<TL>::type;
-
-    template <typename... Ts>
-    struct TypeListRemoveVoid<TypeList<void, Ts...>>
-    {
-        using type = TypeListRemoveVoid_t<TypeList<Ts...>>;
-    };
-
-    template <typename T, typename... Ts>
-    struct TypeListRemoveVoid<TypeList<T, Ts...>>
-    {
-        using type = TypeListCat_t<TypeList<T>, TypeListRemoveVoid_t<TypeList<Ts...>>>;
-    };
-
-// Component
-
-    template <typename T>
-    class Component
-    {
-        T val;
-
-        Component(Component const&) = delete;
-        Component(Component &&) noexcept = delete;
-        Component& operator=(Component const&) = delete;
-        Component& operator=(Component &&) noexcept = delete;
-
-        public:
-
-            Component(T t)
-                : val(move(t))
-            {}
-
-            T& getVal()
-            {
-                return val;
-            }
-    };
-
-    using AbstractComponent = void;
-
-// GUIDPair
-
-    template <typename T>
-    class GUIDPair
-    {
-        pair<std::type_index,T> val;
-
-        public:
-
-            GUIDPair(std::type_index guid, T t)
-                : val(guid, move(t))
-            {}
-
-            std::type_index getGUID() const noexcept
-            {
-                return val.first;
-            }
-
-            T& getVal() noexcept
-            {
-                return val.second;
-            }
-
-            T const& getVal() const noexcept
-            {
-                return val.second;
-            }
-    };
-
-    template <typename T>
-    bool operator<(GUIDPair<T>const& a, GUIDPair<T>const& b) noexcept
-    {
-        return a.getGUID() < b.getGUID();
+    inline TypeGuid nextTypeGuid() noexcept {
+        static TypeGuid x = 0;
+        return ++x;
     }
 
     template <typename T>
-    bool operator<(GUIDPair<T> const& a, std::type_index guid) noexcept
-    {
-        return a.getGUID() < guid;
-    }
+    struct TypeGuidHolder {
+        static const TypeGuid value;
+    };
 
     template <typename T>
-    bool operator<(std::type_index guid, GUIDPair<T> const& a) noexcept
-    {
-        return guid < a.getGUID();
+    const TypeGuid TypeGuidHolder<T>::value = nextTypeGuid();
+
+    template <typename T>
+    TypeGuid getTypeGuid() {
+        return TypeGuidHolder<T>::value;
     }
+
+// DynamicBitset
+
+    class DynamicBitset {
+    public:
+        static constexpr auto N_BITS = 64;
+
+        DynamicBitset() : sdo(0), numbits(N_BITS) {}
+        
+        DynamicBitset(const DynamicBitset&) = delete;
+        DynamicBitset& operator=(const DynamicBitset&) = delete;
+
+        DynamicBitset(DynamicBitset&& other) : sdo(0), numbits(N_BITS) {
+            if (other.numbits == N_BITS) {
+                sdo = other.sdo;
+            } else {
+                new (&dyna) unique_ptr<bitset<N_BITS>[]>(move(other.dyna));
+                other.dyna.~unique_ptr<bitset<N_BITS>[]>();
+                numbits = other.numbits;
+                other.numbits = N_BITS;
+                other.sdo = 0;
+            }
+        }
+
+        DynamicBitset& operator=(DynamicBitset&& other) {
+            if (numbits != N_BITS) {
+                dyna.~unique_ptr<bitset<N_BITS>[]>();
+            }
+            if (other.numbits == N_BITS) {
+                sdo = other.sdo;
+            } else {
+                new (&dyna) unique_ptr<bitset<N_BITS>[]>(move(other.dyna));
+                other.dyna.~unique_ptr<bitset<N_BITS>[]>();
+            }
+            numbits = other.numbits;
+            other.sdo = 0;
+            other.numbits = N_BITS;
+            return *this;
+        }
+
+        ~DynamicBitset() {
+            if (numbits != N_BITS) {
+                dyna.~unique_ptr<bitset<N_BITS>[]>();
+            }
+        }
+
+        int size() const { return numbits; }
+
+        void resize(int ns) {
+            if (ns > numbits) {
+                auto count = (ns+N_BITS-1u)/N_BITS;
+                auto newlen = count * N_BITS;
+                auto newptr = make_unique<bitset<N_BITS>[]>(count);
+                if (numbits == N_BITS) {
+                    newptr[0] = sdo;
+                } else {
+                    copy(dyna.get(), dyna.get()+(numbits/N_BITS), newptr.get());
+                    fill(newptr.get()+(numbits/N_BITS), newptr.get()+(newlen/N_BITS), 0);
+                }
+                dyna = move(newptr);
+                numbits = newlen;
+            }
+        }
+
+        bool get(int i) const {
+            if (__builtin_expect(numbits==N_BITS,1)) return sdo[i];
+            else return dyna[i/64][i%64];
+        }
+
+        void set(int i) {
+            resize(i+1);
+            if (__builtin_expect(numbits==N_BITS,1)) sdo[i] = true;
+            else dyna[i/64][i%64] = true;
+        }
+
+        void unset(int i) {
+            resize(i+1);
+            if (__builtin_expect(numbits==N_BITS,1)) sdo[i] = false;
+            else dyna[i/64][i%64] = false;
+        }
+
+        void zero() {
+            if (__builtin_expect(numbits==N_BITS,1)) {
+                sdo = 0;
+            } else {
+                fill(dyna.get(), dyna.get()+numbits/N_BITS, 0);
+            }
+        }
+
+    private:
+        union {
+            bitset<N_BITS> sdo;
+            unique_ptr<bitset<N_BITS>[]> dyna;
+        };
+        int numbits;
+    };
 
 // Entity
 
-    using ComponentData = GUIDPair<shared_ptr<AbstractComponent>>;
-
-    class Entity
+    struct Entity
     {
-        template <template <typename> class AllocatorT>
-        friend class Database;
-
-        using ComponentVec = vector<ComponentData>;
-
-        ComponentVec components;
-
-        public:
-
-            Entity() = default;
-            Entity(Entity const&) = delete;
-            Entity(Entity &&) noexcept = default;
-            Entity& operator=(Entity const&) = delete;
-            Entity& operator=(Entity &&) = default;
+        DynamicBitset components = {};
     };
 
 // Queries
 
+    /*! Has component
+     *
+     * When used as a visitor parameter, applies the matching logic for the parameter, but does not load the component.
+     */
+    template <typename T>
+    struct Has
+    {};
+
     /*! Visitor parameter inverter
      *
-     * When used as a visitor parameter or query parameter, inverts the matching logic for that parameter.
+     * When used as a visitor parameter, inverts the matching logic for that parameter.
      */
     template <typename T>
     struct Not
@@ -171,217 +166,508 @@ namespace _detail {
     struct Tag
     {};
 
+    /*! Optional component
+     *
+     * When used as a visitor parameter, applies the matching logic for the parameter, but does not cause the visit to fail.
+     * 
+     * Provides pointer-like access to the parameter.
+     */
+    template <typename T>
+    class Maybe
+    {
+    public:
+        Maybe() : com(nullptr) {}
+        Maybe(const Maybe&) = default;
+        Maybe(Maybe&&) = default;
+        Maybe& operator=(const Maybe&) = default;
+        Maybe& operator=(Maybe&&) = default;
+        T* operator->() const { return com; }
+        T& operator*() const { return *com; }
+        explicit operator bool() const { return com; }
+        T& get() const { return *com; }
+    private:
+        template <typename DB, typename EntID, typename... Components>
+        friend struct Applier;
+        Maybe(T* com) : com(com) {}
+        T* com;
+    };
+
+    /*! Optional Tag component
+     *
+     * When used as a visitor parameter, applies the matching logic for the parameter, but does not cause the visit to fail.
+     */
+    template <typename T>
+    class Maybe<Tag<T>>
+    {
+    public:
+        Maybe() : tag(false) {}
+        Maybe(const Maybe&) = default;
+        Maybe(Maybe&&) = default;
+        Maybe& operator=(const Maybe&) = default;
+        Maybe& operator=(Maybe&&) = default;
+        explicit operator bool() const { return tag; }
+    private:
+        template <typename DB, typename EntID, typename... Components>
+        friend struct Applier;
+        Maybe(bool tag) : tag(tag) {}
+        bool tag;
+    };
+
     // ComponentTraits
 
         struct ComponentTags
         {
-            struct normal {};
-            struct tagged {};
-            struct inverted {};
-            struct info {};
-            struct eid {};
+            struct positive {};
+            struct normal : positive {};
+            struct noload : positive {};
+            struct tagged : positive {};
+            struct meta {};
+            struct nofail : meta {};
+            struct inverted : meta {};
+            struct eid : meta {};
         };
 
-        template <typename DB, typename Component, template <typename> class ComInfo = DB::template ComInfo>
+        template <typename DB, typename Component>
         struct ComponentTraits
         {
             using tag = ComponentTags::normal;
             using com = Component;
-            using key = const Component&;
         };
 
-        template <typename DB, typename Component, template <typename> class ComInfo>
-        struct ComponentTraits<DB,ComInfo<Component>,ComInfo>
+        template <typename DB, typename Component>
+        struct ComponentTraits<DB, Has<Component>>
         {
-            using tag = ComponentTags::info;
+            using tag = ComponentTags::noload;
             using com = Component;
-            using key = void;
         };
 
-        template <typename DB, typename Component, template <typename> class ComInfo>
-        struct ComponentTraits<DB,Tag<Component>,ComInfo>
+        template <typename DB, typename Component>
+        struct ComponentTraits<DB, Tag<Component>>
         {
             using tag = ComponentTags::tagged;
             using com = Tag<Component>;
-            using key = Tag<Component>;
         };
 
-        template <typename DB, typename Component, template <typename> class ComInfo>
-        struct ComponentTraits<DB,Not<Component>,ComInfo>
+        template <typename DB, typename Component>
+        struct ComponentTraits<DB, Maybe<Component>>
+        {
+            using tag = ComponentTags::nofail;
+            using com = Component;
+        };
+
+        template <typename DB, typename Component>
+        struct ComponentTraits<DB, Not<Component>>
         {
             using tag = ComponentTags::inverted;
             using com = Component;
-            using key = Not<Component>;
         };
 
-        template <typename DB, template <typename> class ComInfo>
-        struct ComponentTraits<DB,typename DB::EntID,ComInfo>
+        template <typename DB>
+        struct ComponentTraits<DB, typename DB::EntID>
         {
             using tag = ComponentTags::eid;
             using com = void;
-            using key = void;
         };
-
-    // FirstComparable
-
-        template <typename DB, typename Coms, typename ComTags>
-        struct FirstComparable
-        {
-            using type = typename DB::EntID;
-        };
-
-        template <typename DB, typename... Coms>
-        using FirstComparable_t = typename FirstComparable<DB, TypeList<Coms...>, TypeList<typename ComponentTraits<DB, Coms>::tag...>>::type;
-
-        template <typename DB, typename HeadCom, typename... Coms, typename... ComTags>
-        struct FirstComparable<DB, TypeList<HeadCom, Coms...>, TypeList<ComponentTags::normal, ComTags...>>
-        {
-            using type = typename ComponentTraits<DB, HeadCom>::com;
-        };
-
-        template <typename DB, typename HeadCom, typename... Coms, typename HeadTag, typename... ComTags>
-        struct FirstComparable<DB, TypeList<HeadCom, Coms...>, TypeList<HeadTag, ComTags...>>
-        {
-            using type = FirstComparable_t<DB, Coms...>;
-        };
-
-    // SystemKey
-
-        template <typename DB, typename... Coms>
-        using SystemKey_t = TypeListRemoveVoid_t<TypeList<typename ComponentTraits<DB, Coms>::key...>>;
 
     // Applier
 
-        template <typename DB, typename EntID, typename... Components>
+        template <typename DB, typename PrimaryComponent, typename... Components>
         struct Applier;
 
-        template <typename DB, typename EntID, typename HeadCom, typename... TailComs>
-        struct Applier<DB,EntID,HeadCom,TailComs...>
+        template <typename DB, typename PrimaryComponent, typename HeadCom, typename... TailComs>
+        struct Applier<DB, PrimaryComponent, HeadCom, TailComs...>
         {
+            using EntID = typename DB::EntID;
+            using ComID = typename DB::ComID;
+
             template <typename Traits, typename Visitor, typename... Args>
-            static void helper(ComponentTags::normal, EntID eid, Visitor&& visitor, Args&&... args)
+            static void helper(ComponentTags::normal, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.template get<typename Traits::com>())
+                auto& com = db.template getComponent<typename Traits::com>(eid);
+                return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::noload, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid))
                 {
-                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info.data());
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Has<typename Traits::com>{});
                 }
             }
 
             template <typename Traits, typename Visitor, typename... Args>
-            static void helper(ComponentTags::inverted, EntID eid, Visitor&& visitor, Args&&... args)
+            static void helper(ComponentTags::inverted, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.template get<typename Traits::com>())
-                {
-                    return;
-                }
-                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<typename Traits::com>{});
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                return inverted_helper<Traits>(typename InnerTraits::tag{}, db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
             }
 
             template <typename Traits, typename Visitor, typename... Args>
-            static void helper(ComponentTags::info, EntID eid, Visitor&& visitor, Args&&... args)
+            static void inverted_helper(ComponentTags::positive, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.template get<typename Traits::com>())
+                if (!db.template hasComponent<typename Traits::com>(eid))
                 {
-                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com_info);
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<typename Traits::com>{});
                 }
             }
 
             template <typename Traits, typename Visitor, typename... Args>
-            static void helper(ComponentTags::tagged, EntID eid, Visitor&& visitor, Args&&... args)
+            static void inverted_helper(ComponentTags::inverted, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                if (auto com_info = eid.template get<typename Traits::com>())
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                using NextTraits = ComponentTraits<DB, typename InnerTraits::com>;
+                return helper<NextTraits>(typename NextTraits::tag{}, db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::tagged, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid))
                 {
-                    return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., typename Traits::com{});
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., typename Traits::com{});
                 }
             }
 
             template <typename Traits, typename Visitor, typename... Args>
-            static void helper(ComponentTags::eid, EntID eid, Visitor&& visitor, Args&&... args)
+            static void helper(ComponentTags::nofail, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                return Applier<DB,EntID,TailComs...>::try_apply(eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                return nofail_helper<Traits>(typename InnerTraits::tag{}, db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void nofail_helper(ComponentTags::normal, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid)) {
+                    auto& com = db.template getComponent<typename Traits::com>(eid);
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(&com));
+                } else {
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(nullptr));
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void nofail_helper(ComponentTags::tagged, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid)) {
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(true));
+                } else {
+                    return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(false));
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::eid, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
+                return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
             }
 
             template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            static void try_apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
                 using Traits = ComponentTraits<DB,HeadCom>;
-                return helper<Traits>(typename Traits::tag{}, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+                return helper<Traits>(typename Traits::tag{}, db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
             }
         };
 
-        template <typename DB, typename EntID>
-        struct Applier<DB,EntID>
+        template <typename DB, typename PrimaryComponent, typename... TailComs>
+        struct Applier<DB, PrimaryComponent, PrimaryComponent, TailComs...>
         {
+            using EntID = typename DB::EntID;
+            using ComID = typename DB::ComID;
+
             template <typename Visitor, typename... Args>
-            static void try_apply(EntID eid, Visitor&& visitor, Args&&... args)
+            static void try_apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
-                (void)eid;
+                using Traits = ComponentTraits<DB,PrimaryComponent>;
+                auto& com = db.template getComponent<typename Traits::com>(eid, primary_cid);
+                return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
+            }
+        };
+
+        template <typename DB, typename PrimaryComponent>
+        struct Applier<DB, PrimaryComponent>
+        {
+            using EntID = typename DB::EntID;
+            using ComID = typename DB::ComID;
+
+            template <typename Visitor, typename... Args>
+            static void try_apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            {
                 std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
             }
         };
 
-    // KeyMatcher
-
-        template <typename DB, typename SystemKey>
-        struct KeyMatcher;
-
-        template <typename DB, typename... Keys>
-        struct KeyMatcher<DB, TypeList<Keys...>>
+        template <typename DB, typename HeadCom, typename... TailComs>
+        struct Applier<DB, void, HeadCom, TailComs...>
         {
             using EntID = typename DB::EntID;
+            using ComID = typename DB::ComID;
 
-            static bool match(EntID eid)
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::normal, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
             {
-                bool ret = false;
-                Applier<DB,EntID,decay_t<Keys>...>::try_apply(eid,[&](Keys...){ret = true;});
-                return ret;
+                auto& com = db.template getComponent<typename Traits::com>(eid);
+                return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::noload, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid))
+                {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Has<typename Traits::com>{});
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::inverted, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                return inverted_helper<Traits>(typename InnerTraits::tag{}, db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void inverted_helper(ComponentTags::positive, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (!db.template hasComponent<typename Traits::com>(eid))
+                {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<typename Traits::com>{});
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void inverted_helper(ComponentTags::inverted, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                using NextTraits = ComponentTraits<DB, typename InnerTraits::com>;
+                return helper<NextTraits>(typename NextTraits::tag{}, db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::tagged, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid))
+                {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., typename Traits::com{});
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::nofail, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                using InnerTraits = ComponentTraits<DB, typename Traits::com>;
+                return nofail_helper<Traits>(typename InnerTraits::tag{}, db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void nofail_helper(ComponentTags::normal, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid)) {
+                    auto& com = db.template getComponent<typename Traits::com>(eid);
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(&com));
+                } else {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(nullptr));
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void nofail_helper(ComponentTags::tagged, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                if (db.template hasComponent<typename Traits::com>(eid)) {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(true));
+                } else {
+                    return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(false));
+                }
+            }
+
+            template <typename Traits, typename Visitor, typename... Args>
+            static void helper(ComponentTags::eid, DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                return Applier<DB, void, TailComs...>::try_apply(db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., eid);
+            }
+
+            template <typename Visitor, typename... Args>
+            static void try_apply(DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                using Traits = ComponentTraits<DB,HeadCom>;
+                return helper<Traits>(typename Traits::tag{}, db, eid, std::forward<Visitor>(visitor), std::forward<Args>(args)...);
             }
         };
 
+        template <typename DB>
+        struct Applier<DB, void>
+        {
+            using EntID = typename DB::EntID;
+            using ComID = typename DB::ComID;
+
+            template <typename Visitor, typename... Args>
+            static void try_apply(DB& db, EntID eid, Visitor&& visitor, Args&&... args)
+            {
+                std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
+            }
+        };
+
+    // VisitorKey
+
+        template <typename DB, typename... Components>
+        struct VisitorKey;
+        
+        template <typename DB, typename HeadCom, typename... TailComs>
+        struct VisitorKey<DB, HeadCom, TailComs...>
+        {
+            using EntID = typename DB::EntID;
+            using Traits = ComponentTraits<DB, HeadCom>;
+
+            static bool helper(DB& db, EntID eid, ComponentTags::positive)
+            {
+                return VisitorKey<DB, TailComs...>::check(db, eid) && db.template hasComponent<typename Traits::com>(eid);
+            }
+
+            static bool helper(DB& db, EntID eid, ComponentTags::meta)
+            {
+                return VisitorKey<DB, TailComs...>::check(db, eid);
+            }
+            
+            static bool check(DB& db, EntID eid)
+            {
+                return helper(db, eid, typename Traits::tag{});
+            }
+        };
+
+        template <typename DB>
+        struct VisitorKey<DB>
+        {
+            using EntID = typename DB::EntID;
+            static bool check(DB& db, EntID eid)
+            {
+                return true;
+            }
+        };
+
+    // First
+
+        template <typename T, typename... Ts>
+        struct First
+        {
+            using type = T;
+        };
+
+        template <typename... Ts>
+        using First_t = typename First<Ts...>::type;
+    
+    // GetPrimary
+
+        template <typename T>
+        struct Primary
+        {
+            using type = T;
+        };
+        
+        template <typename DB, typename HeadTag, typename... Components>
+        struct GetPrimary;
+    
+        template <typename DB, typename... Components>
+        using GetPrimary_t = typename GetPrimary<DB, typename ComponentTraits<DB, First_t<Components...>>::tag, Components...>::type;
+
+        template <typename DB, typename HeadTag, typename HeadCom, typename... Components>
+        struct GetPrimary<DB, HeadTag, HeadCom, Components...>
+        {
+            using type = GetPrimary_t<DB, Components...>;
+        };
+        
+        template <typename DB, typename HeadTag, typename HeadCom>
+        struct GetPrimary<DB, HeadTag, HeadCom>
+        {
+            using type = Primary<void>;
+        };
+        
+        template <typename DB, typename HeadCom, typename... Components>
+        struct GetPrimary<DB, ComponentTags::normal, HeadCom, Components...>
+        {
+            using type = Primary<HeadCom>;
+        };
+
+        template <typename DB, typename HeadCom>
+        struct GetPrimary<DB, ComponentTags::normal, HeadCom>
+        {
+            using type = Primary<HeadCom>;
+        };
+    
+    // FindOther
+
+        template <typename DB, typename T, bool Positive, typename... Ts>
+        struct FindOther;
+        
+        template <typename DB, typename T, typename... Ts>
+        using FindOther_t = typename FindOther<DB, T, is_base_of<ComponentTags::positive, typename ComponentTraits<DB, First_t<Ts...>>::tag>::value, Ts...>::type;
+
+        template <typename DB, typename T, typename U, typename... Ts>
+        struct FindOther<DB, T, true, U, Ts...>
+        {
+            using type = true_type;
+        };
+        
+        template <typename DB, typename T, typename... Ts>
+        struct FindOther<DB, T, true, T, Ts...>
+        {
+            using type = FindOther_t<DB, T, Ts...>;
+        };
+        
+        template <typename DB, typename T, typename U, typename... Ts>
+        struct FindOther<DB, T, false, U, Ts...>
+        {
+            using type = FindOther_t<DB, T, Ts...>;
+        };
+        
+        template <typename DB, typename T, typename U>
+        struct FindOther<DB, T, false, U>
+        {
+            using type = false_type;
+        };
+        
+        template <typename DB, typename T>
+        struct FindOther<DB, T, true, T>
+        {
+            using type = false_type;
+        };
+
+        template <typename DB, typename T>
+        struct FindOther<DB, T, false, T>
+        {
+        };
+
     // VisitorTraits
-
-        // EntityComparator
-
-            template <typename DB, typename Com>
-            struct EntityComparator
-            {
-                bool operator()(typename DB::EntID left, typename DB::EntID right) const
-                {
-                    return less<>{}(&left.template get<Com>().data(), &right.template get<Com>().data());
-                }
-            };
-
-            template <typename DB>
-            struct EntityComparator<DB, typename DB::EntID>
-            {
-                bool operator()(typename DB::EntID left, typename DB::EntID right) const
-                {
-                    return less<>{}(left, right);
-                }
-            };
 
         template <typename DB, typename... Components>
         struct VisitorTraitsImpl
         {
             using EntID = typename DB::EntID;
-            using SystemKey = SystemKey_t<DB, Components...>;
-            using PrimaryKey = FirstComparable_t<DB, Components...>;
-            using Comparator = EntityComparator<DB, PrimaryKey>;
-            using Matcher = KeyMatcher<DB, SystemKey>;
+            using ComID = typename DB::ComID;
+            using Key = VisitorKey<DB, Components...>;
+            using PrimaryComponent = GetPrimary_t<DB, Components...>;
+            using HasOtherComponents = FindOther_t<DB, typename PrimaryComponent::type, Components...>;
 
             template <typename Visitor>
-            static void apply(EntID eid, Visitor&& visitor)
+            static void apply(DB& db, EntID eid, Visitor&& visitor)
             {
-                Applier<DB,EntID,Components...>::try_apply(eid,std::forward<Visitor>(visitor));
+                Applier<DB, typename PrimaryComponent::type, Components...>::try_apply(db, eid, std::forward<Visitor>(visitor));
+            }
+            
+            template <typename Visitor>
+            static void apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor)
+            {
+                Applier<DB, typename PrimaryComponent::type, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
             }
         };
 
         template <typename DB, typename Visitor>
-        struct VisitorTraits : VisitorTraits<DB,decltype(&Visitor::operator())>
+        struct VisitorTraits : VisitorTraits<DB,decltype(&decay_t<Visitor>::operator())>
         {};
 
         template <typename DB, typename R, typename... Ts>
-        struct VisitorTraits<DB, R(*)(Ts...)> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
+        struct VisitorTraits<DB, R(&)(Ts...)> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
         {};
 
         template <typename DB, typename Visitor, typename R, typename... Ts>
@@ -404,69 +690,87 @@ namespace _detail {
         struct VisitorTraits<DB, R(Visitor::*)(Ts...)&&> : VisitorTraitsImpl<DB,std::decay_t<Ts>...>
         {};
 
-// Systems
+// SparseSet
 
-    template <typename EntID>
-    class System
+    class SparseSet
     {
     public:
-        virtual ~System() = 0;
-
-        virtual void update(EntID eid) = 0;
-
-        virtual void remove(EntID eid) = 0;
-
-        virtual const vector<EntID>& get_entities() const = 0;
+        using size_type = std::size_t;
+        virtual ~SparseSet() = 0;
+        virtual void remove(size_type entid) = 0;
     };
 
-    template <typename EntID>
-    System<EntID>::~System() = default;
+    inline SparseSet::~SparseSet() = default;
 
-    template <typename VT>
-    class SystemImpl final : public System<typename VT::EntID>
+    template <typename T>
+    class SparseSetImpl final : public SparseSet
     {
     public:
-        using EntID = typename VT::EntID;
+        virtual ~SparseSetImpl() = default;
 
-        virtual ~SystemImpl() override final = default;
-
-        virtual void update(EntID eid) override final
+        size_type assign(size_type entid, T com)
         {
-            auto iter = lower_bound(begin(entities), end(entities), eid, typename VT::Comparator{});
+            if(entid >= entid_to_comid.size()) {
+                entid_to_comid.resize(entid+1, -1);
+            }
 
-            if (VT::Matcher::match(eid))
-            {
-                if (iter == end(entities) || *iter != eid)
-                {
-                    entities.insert(iter, eid);
-                }
-            }
-            else
-            {
-                if (iter != end(entities) && *iter == eid)
-                {
-                    entities.erase(iter);
-                }
-            }
+            auto comid = comid_to_entid.size();
+
+            entid_to_comid[entid] = comid;
+            comid_to_entid.push_back(entid);
+            components.push_back(move(com));
+            
+            return comid;
         }
 
-        virtual void remove(EntID eid) override final
+        virtual void remove(size_type entid) override final
         {
-            auto iter = lower_bound(begin(entities), end(entities), eid, typename VT::Comparator{});
+            auto last = comid_to_entid.size() - 1;
+            auto comid = entid_to_comid[entid];
 
-            if (iter != end(entities) && *iter == eid)
-            {
-                entities.erase(iter);
-            }
+            entid_to_comid[entid] = -1;
+            entid_to_comid[comid_to_entid[last]] = comid;
+
+            comid_to_entid[comid] = comid_to_entid[last];
+            comid_to_entid.pop_back();
+
+            components[comid] = move(components[last]);
+            components.pop_back();
         }
 
-        virtual const vector<EntID>& get_entities() const override final
+        size_type get_comid(size_type entid) const
         {
-            return entities;
+            return entid_to_comid[entid];
+        }
+
+        T& get_com(size_type comid)
+        {
+            return components[comid];
+        }
+
+        size_type get_entid(size_type comid) const
+        {
+            return comid_to_entid[comid];
+        }
+
+        auto size() const
+        {
+            return components.size();
         }
 
     private:
-        vector<EntID> entities;
+        vector<size_type> entid_to_comid;
+        vector<size_type> comid_to_entid;
+        vector<T> components;
+    };
+
+    template <typename T>
+    class SparseSetImpl<Tag<T>> final : public SparseSet
+    {
+    public:
+        virtual ~SparseSetImpl() = default;
+        int assign(size_type entid, T&& com) {}
+        virtual void remove(size_type entid) override final {}
     };
 
 /*! Database
@@ -477,644 +781,335 @@ namespace _detail {
  * @warning
  * This container does not perform any synchronization. Therefore, it is not
  * considered "thread-safe".
- *
- * @tparam AllocatorT Component allocator.
  */
-template <template <typename> class AllocatorT = allocator>
 class Database
 {
-    public:
-        template <typename T>
-        using AllocList = list<T, AllocatorT<T>>;
+public:
+// IDs
 
-    // IDs
+    /*! Entity ID.
+    */
+    using EntID = size_t;
 
-        // forward declarations needed for EntID
+    /*! Component ID.
+    */
+    using ComID = size_t;
 
-            class ComID;
+// Entity functions
 
-            template <typename Com>
-            class ComInfo;
+    /*! Creates a new Entity.
+    *
+    * Creates a new Entity that has no components.
+    *
+    * @return EntID of the new Entity.
+    */
+    EntID makeEntity()
+    {
+        EntID eid;
 
-        /*! Entity ID
-         *
-         * A handle to an Entity. Very lightweight.
-         */
-        class EntID
+        if (free_entities.empty())
         {
-            friend class Database;
-
-            typename AllocList<Entity>::const_iterator iter;
-
-            public:
-
-                /*! Query the Entity for a component.
-                 *
-                 * Queries the Entity for the given component type.
-                 * If found, returns a valid ComInfo object for the requested
-                 * component.
-                 * Otherwise, returns an invalid ComInfo object.
-                 *
-                 * @tparam T Explicit type of component.
-                 * @return ComInfo for the requested component.
-                 */
-                template <typename T>
-                ComInfo<T> get() const
-                {
-                    auto guid = std::type_index(typeid(T));
-                    auto& comvec = iter->components;
-
-                    auto pos=lower_bound(begin(comvec), end(comvec), guid);
-
-                    if (pos != end(comvec) && pos->getGUID() == guid)
-                    {
-                        return {ComID(*this,pos)};
-                    }
-
-                    return {};
-                }
-
-                /*! Query the Entity for multiple components.
-                 *
-                 * Returns a tuple containing results equivalent to multiple
-                 * calls to get().
-                 *
-                 * For example, if `eid.getComs<X,Y,Z>()` is called, it is
-                 * equivalent to calling
-                 * `std::make_tuple(get<X>(),get<Y>(),get<Z>())`.
-                 *
-                 * @tparam Ts Explicit component types.
-                 * @return Tuple of results equivalent to get().
-                 */
-                template <typename... Ts>
-                tuple<ComInfo<Ts>...> getComs() const
-                {
-                    return make_tuple(get<Ts>()...);
-                }
-
-                /*! Compares this EntID to another for equivalence.
-                 *
-                 * Returns true only if the two EntIDs are handles to the same
-                 * Entity.
-                 *
-                 * @param other The EntID to compare to this.
-                 * @return True if EntIDs are equivalent.
-                 */
-                bool operator==(EntID const& other) const
-                {
-                    return (iter == other.iter);
-                }
-
-                /*! Compares this EntID to another for inequivalence.
-                 *
-                 * Returns the inverse of `operator==`.
-                 *
-                 * @param other The EntID to compare to this.
-                 * @return False if EntIDs are equivalent.
-                 */
-                bool operator!=(EntID const& other) const
-                {
-                    return !operator==(other);
-                }
-
-                /*! Compares this EntID to another for ordering.
-                 *
-                 * Provides a strict weak ordering for EntIDs.
-                 *
-                 * @param other The EntID to compare to this.
-                 * @return True if this should be ordered before other.
-                 */
-                bool operator<(EntID const& other) const
-                {
-                    return (&*iter < &*other.iter);
-                }
-        };
-
-        /*! Component ID
-         *
-         * A handle to a type-erased component. Very lightweight.
-         */
-        class ComID
+            eid = entities.size();
+            entities.emplace_back();
+        }
+        else
         {
-            friend class Database;
+            eid = free_entities.back();
+            free_entities.pop_back();
+        }
 
-            EntID eid;
-            Entity::ComponentVec::const_iterator iter;
+        entities[eid].components.set(0);
 
-            ComID() = default;
-            ComID(EntID eid, Entity::ComponentVec::const_iterator iter) : eid(eid), iter(iter) {}
+        return eid;
+    }
 
-            public:
+    /*! Destroys an Entity.
+    *
+    * Destroys the given Entity and all associated components.
+    *
+    * @param eid EntID of the Entity to erase.
+    */
+    void eraseEntity(EntID eid)
+    {
+        for (int i=1; i<entities[eid].components.size(); ++i) {
+            if (entities[eid].components.get(i)) {
+                component_sets[i]->remove(eid);
+            }
+        }
 
-                /*! Access component data.
-                 *
-                 * Reverses type erasure on the component's data.
-                 * The specified type must match the component's real type,
-                 * otherwise behaviour is undefined.
-                 *
-                 * @tparam Explicit component data type.
-                 * @return Reference to component data.
-                 */
-                template <typename T>
-                T& cast() const
-                {
-                    auto& sptr = iter->getVal();
-                    auto ptr = static_cast<Component<T>*>(sptr.get());
-                    return ptr->getVal();
-                }
+        entities[eid].components.zero();
+        free_entities.push_back(eid);
+    }
 
-                /*! Get parent's EntID.
-                 *
-                 * Returns a handle to the parent Entity.
-                 *
-                 * @return Handle to parent Entity.
-                 */
-                EntID const& getEID() const
-                {
-                    return eid;
-                }
+// Component functions
 
-                /*! Compares this ComID to another for equivalence.
-                 *
-                 * Returns true only if the two ComIDs are handles to the same
-                 * Component.
-                 *
-                 * @param other The ComID to compare to this.
-                 * @return True if ComIDs are equivalent.
-                 */
-                bool operator==(ComID const& other) const
-                {
-                    return (iter == other.iter);
-                }
+    /*! Create new component.
+    *
+    * Creates a new component from the given value and associates it with
+    * the given Entity.
+    * If a component of the same type already exists, it will be
+    * overwritten.
+    *
+    * @param eid Entity to attach new component to.
+    * @param com Component value.
+    */
+    template <typename T>
+    void makeComponent(EntID eid, T&& com)
+    {
+        auto guid = getTypeGuid<T>();
 
-                /*! Compares this ComID to another for ordering.
-                 *
-                 * Provides a strict weak ordering for ComIDs.
-                 *
-                 * @param other The ComID to compare to this.
-                 * @return True if this should be ordered before other.
-                 */
-                bool operator<(ComID const& other) const
-                {
-                    return less<decltype(&*iter)>{}(&*iter,&*other.iter);
-                }
-        };
+        auto& ent_coms = entities[eid].components;
 
-        /*! Component Info
-         *
-         * A handle to a component of known type.
-         * Provides direct access to the component,
-         * as well as its ComID.
-         *
-         * @tparam Com Component type.
-         */
-        template <typename Com>
-        class ComInfo
+        auto& com_set = getOrCreateComSet<T>();
+        
+        if (guid < ent_coms.size() && ent_coms.get(guid))
         {
-            friend class Database;
-
-            Com* ptr = nullptr;
-            EntID eid;
-
-            ComInfo(ComID id)
-                : ptr(&id.template cast<Com>())
-                , eid(id.getEID())
-            {}
-
-            public:
-
-                using type = Com;
-
-                ComInfo() = default;
-
-                /*! Test for validity.
-                 *
-                 * True if this ComInfo points to a component.
-                 * False otherwise.
-                 *
-                 * @return True if valid.
-                 */
-                explicit operator bool() const
-                {
-                    return ptr;
-                }
-
-                /*! Get component.
-                 *
-                 * @warning
-                 * Behaviour is undefined if this ComInfo is invalid.
-                 *
-                 * @return The component.
-                 */
-                Com& data() const
-                {
-                    return *ptr;
-                }
-
-                /*! Get component ID.
-                 *
-                 * @warning
-                 * Behaviour is undefined if this ComInfo is invalid.
-                 *
-                 * @return A ComID handle for this component.
-                 */
-                ComID id() const
-                {
-                    auto& comvec = eid.iter->components;
-                    auto guid = std::type_index(typeid(Com));
-                    auto pos = lower_bound(begin(comvec), end(comvec), guid);
-                    return ComID(eid,pos);
-                }
-        };
-
-        /*! Component Info for Tags
-         *
-         * A handle to a component of known type.
-         * Provides the component's ComID.
-         *
-         * @tparam Com Component type.
-         */
-        template <typename Com>
-        class ComInfo<Tag<Com>>
+            auto cid = com_set.get_comid(eid);
+            com_set.get_com(cid) = forward<T>(com);
+        }
+        else
         {
-            friend class Database;
+            com_set.assign(eid, forward<T>(com));
+            ent_coms.set(guid);
+        }
+    }
 
-            bool is_valid = false;
-            EntID eid;
+    /*! Create new Tag component.
+    *
+    * Creates a new Tag component associates it with the given Entity.
+    *
+    * @param eid Entity to attach new Tag component to.
+    * @param com Tag value.
+    */
+    template <typename T>
+    void makeComponent(EntID eid, Tag<T> com)
+    {
+        auto guid = getTypeGuid<Tag<T>>();
+        auto& ent_coms = entities[eid].components;
 
-            ComInfo(ComID id)
-                    : is_valid(true)
-                    , eid(id.getEID())
-            {}
+        getOrCreateComSet<Tag<T>>();
 
-        public:
+        ent_coms.set(guid);
+    }
 
-            using type = Com;
+    /*! Erase a component.
+    *
+    * Destroys the given component and disassociates it from its Entity.
+    *
+    * @warning
+    * All ComIDs associated with components of the component's Entity will
+    * be invalidated.
+    *
+    * @tparam Com Type of the component to erase.
+    * 
+    * @param eid EntID of the entity.
+    */
+    template <typename Com>
+    void eraseComponent(EntID eid)
+    {
+        auto guid = getTypeGuid<Com>();
+        auto& com_set = *getComSet<Com>();
+        com_set.remove(eid);
+        entities[eid].components.unset(guid);
+    }
+    
+    /*! Get a component.
+    *
+    * Gets a reference to the component of the given type
+    * that is associated with the given entity.
+    *
+    * @warning
+    * Behavior is undefined when the entity has no associated
+    * component of the given type.
+    *
+    * @tparam Com Type of the component to get.
+    * 
+    * @param eid EntID of the entity.
+    * @return Reference to the component.
+    */
+    template <typename Com>
+    Com& getComponent(EntID eid)
+    {
+        auto& com_set = *getComSet<Com>();
+        auto cid = com_set.get_comid(eid);
+        return com_set.get_com(cid);
+    }
 
-            ComInfo() = default;
+    /*! Checks if an entity has a component.
+    *
+    * Returns whether or not the entity has a component of the
+    * associated type.
+    *
+    * @tparam Com Type of the component to check.
+    * 
+    * @param eid EntID of the entity.
+    * @return True if the component exists.
+    */
+    template <typename Com>
+    bool hasComponent(EntID eid)
+    {
+        auto guid = getTypeGuid<Com>();
+        auto& ent_coms = entities[eid].components;
+        return guid < ent_coms.size() && ent_coms.get(guid);
+    }
 
-            /*! Test for validity.
-             *
-             * True if this ComInfo points to a component.
-             * False otherwise.
-             *
-             * @return True if valid.
-             */
-            explicit operator bool() const
+    /*! Visit the Database.
+    *
+    * Visit the Entities in the Database that match the given function's parameter types.
+    *
+    * The following parameter categories are accepted:
+    *
+    * - Component Data: Any `T` except rvalue-references, matches entities that have component `T`.
+    * - Component Tag: `Tag<T>` value, matches entities that have component `Tag<T>`.
+    * - Component Has: `Has<T>` value, matches entities that have component `T`, but does not load the component.
+    * - Component Maybe: `Maybe<T>` value, checks if a component exists, and provides a way to access it, does not fail.
+    * - Inverted: `Not<T>` value, matches entities that do *not* match component `T`.
+    * - EntID: Matches all entities, provides the `EntID` of the current entity.
+    *
+    * Component Data and Maybe parameters will refer to the entity's matching component.
+    * EntID parameters will contain the entity's EntID.
+    * Other parameters will be their default value.
+    *
+    * Entities that do not match all given parameter conditions will be skipped.
+    *
+    * @warning Entities are visited in no particular order, so adding and removing entities from the visitor
+    *          function could result in non-deterministic behavior.
+    *
+    * @tparam Visitor Visitor function type.
+    * @param visitor Visitor function.
+    */
+    template <typename Visitor>
+    void visit(Visitor&& visitor)
+    {
+        using Traits = VisitorTraits<Database, Visitor>;
+        using PrimaryComponent = typename Traits::PrimaryComponent;
+
+        return visit_helper(forward<Visitor>(visitor), PrimaryComponent{});
+    }
+
+// status functions
+
+    /*! Get the number of entities in the Database.
+    *
+    * @return Number of entities in the Database.
+    */
+    auto size() const
+    {
+        return entities.size() - free_entities.size();
+    }
+
+private:
+
+    template <typename DB, typename PrimaryComponent, typename... Components>
+    friend struct Applier;
+
+    template <typename Com>
+    Com& getComponent(EntID eid, ComID cid)
+    {
+        auto& com_set = *getComSet<Com>();
+        return com_set.get_com(cid);
+    }
+
+    template <typename Com>
+    SparseSetImpl<Com>* getComSet() {
+        auto guid = getTypeGuid<Com>();
+        auto& com_set = component_sets[guid];
+        auto com_set_impl = static_cast<SparseSetImpl<Com>*>(com_set.get());
+        return com_set_impl;
+    }
+
+    template <typename Com>
+    SparseSetImpl<Com>& getOrCreateComSet() {
+        auto guid = getTypeGuid<Com>();
+        if (component_sets.size() <= guid) {
+            component_sets.resize(guid+1);
+        }
+        auto& com_set = component_sets[guid];
+        if (!com_set) {
+            com_set = make_unique<SparseSetImpl<Com>>();
+        }
+        auto com_set_impl = static_cast<SparseSetImpl<Com>*>(com_set.get());
+        return *com_set_impl;
+    }
+
+    template <typename Visitor, typename Component>
+    void visit_helper(Visitor&& visitor, Primary<Component>)
+    {
+        using Traits = VisitorTraits<Database, Visitor>;
+        using HasOtherComponents = typename Traits::HasOtherComponents;
+
+        return visit_helper_primary(forward<Visitor>(visitor), Primary<Component>{}, HasOtherComponents{});
+    }
+
+    template <typename Visitor, typename Component>
+    void visit_helper_primary(Visitor&& visitor, Primary<Component>, true_type)
+    {
+        using Traits = VisitorTraits<Database, Visitor>;
+        using Key = typename Traits::Key;
+
+        if (auto com_set_ptr = getComSet<Component>())
+        {
+            auto& com_set = *com_set_ptr;
+
+            for (auto cid = 0; cid < com_set.size(); ++cid)
             {
-                return is_valid;
-            }
-
-            /*! Get component ID.
-             *
-             * @warning
-             * Behaviour is undefined if this ComInfo is invalid.
-             *
-             * @return A ComID handle for this component.
-             */
-            ComID id() const
-            {
-                auto& comvec = eid.iter->components;
-                auto guid = std::type_index(typeid(Tag<Com>));
-                auto pos = lower_bound(begin(comvec), end(comvec), guid);
-                return ComID(eid,pos);
-            }
-        };
-
-    // Entity functions
-
-        /*! Creates a new Entity.
-         *
-         * Creates a new Entity that has no components.
-         *
-         * @return EntID of the new Entity.
-         */
-        EntID makeEntity()
-        {
-            EntID rv;
-            rv.iter = entities.emplace(end(entities));
-            updateSystems(rv);
-            return rv;
-        }
-
-        /*! Destroys an Entity.
-         *
-         * Destroys the given Entity and all associated components.
-         *
-         * @warning
-         * All components associated with the Entity are destroyed.
-         * This means that all references and ComIDs associated with those
-         * components are invalidated.
-         *
-         * @param eid EntID of the Entity to erase.
-         */
-        void eraseEntity(EntID eid)
-        {
-            removeFromSystems(eid);
-            entities.erase(eid.iter);
-        }
-
-        /*! Emplace an Entity into this Database.
-         *
-         * Move the given Entity into this Database.
-         *
-         * @param ent Entity rvalue to move.
-         * @return EntID to the new Entity.
-         */
-        EntID emplaceEntity(Entity&& ent)
-        {
-            EntID rv;
-            rv.iter = entities.emplace(end(entities), move(ent));
-            updateSystems(rv);
-            return rv;
-        }
-
-        /*! Displace an Entity out of this Database.
-         *
-         * Moves the given Entity out of this Database.
-         *
-         * @warning
-         * All EntIDs associated with the Entity are invalidated.
-         *
-         * @param eid EntID to Entity to displace.
-         * @return Entity value.
-         */
-        Entity displaceEntity(EntID eid)
-        {
-            removeFromSystems(eid);
-            Entity rv = move(*entities.erase(eid.iter,eid.iter));
-            entities.erase(eid.iter);
-            return rv;
-        }
-
-    // Component functions
-
-        /*! Create new component.
-         *
-         * Creates a new component from the given value and associates it with
-         * the given Entity.
-         * If a component of the same type already exists, it will be
-         * overwritten.
-         *
-         * @warning
-         * All ComIDs associated with components of the given Entity will be
-         * invalidated.
-         *
-         * @param eid Entity to attach new component to.
-         * @param com Component value.
-         * @return ComInfo for the new component.
-         */
-        template <typename T>
-        ComInfo<T> makeComponent(EntID eid, T com)
-        {
-            ComID cid;
-            auto guid = std::type_index(typeid(T));
-            AllocatorT<Component<T>> alloc;
-
-            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
-
-            auto pos = lower_bound(begin(comvec), end(comvec), guid);
-
-            cid.eid = eid;
-
-            if (pos != end(comvec) && pos->getGUID() == guid)
-            {
-                cid.iter = pos;
-                cid.template cast<T>() = move(com);
-            }
-            else
-            {
-                auto ptr = allocate_shared<Component<T>>(alloc, move(com));
-                cid.iter = comvec.emplace(pos, guid, move(ptr));
-                updateSystems(eid);
-            }
-
-            return {cid};
-        }
-
-        /*! Create new component.
-         *
-         * Creates a new component from the given value and associates it with
-         * the given Entity.
-         * If a component of the same type already exists, it will be
-         * overwritten.
-         *
-         * @warning
-         * All ComIDs associated with components of the given Entity will be
-         * invalidated.
-         *
-         * @param eid Entity to attach new component to.
-         * @param com Component value.
-         * @return ComInfo for the new component.
-         */
-        template <typename T>
-        ComInfo<Tag<T>> makeComponent(EntID eid, Tag<T> com)
-        {
-            ComID cid;
-            auto guid = std::type_index(typeid(Tag<T>));
-
-            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
-
-            auto pos = lower_bound(begin(comvec), end(comvec), guid);
-
-            cid.eid = eid;
-
-            if (pos != end(comvec) && pos->getGUID() == guid)
-            {
-                cid.iter = pos;
-            }
-            else
-            {
-                cid.iter = comvec.emplace(pos, guid, nullptr);
-                updateSystems(eid);
-            }
-
-            return {cid};
-        }
-
-        /*! Erase a component.
-         *
-         * Destroys the given component and disassociates it from its Entity.
-         *
-         * @warning
-         * All ComIDs associated with components of the component's Entity will
-         * be invalidated.
-         *
-         * @param cid ComID of the component to erase.
-         */
-        void eraseComponent(ComID cid)
-        {
-            auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
-            comvec.erase(cid.iter);
-            updateSystems(cid.eid);
-        }
-
-        /*! Emplace component data into this Database.
-         *
-         * Moves the given component data into this Database and associates it
-         * with the given Entity.
-         *
-         * @warning
-         * All ComIDs of components associated with the given Entity are
-         * invalidated.
-         *
-         * @param eid Entity to attach component to.
-         * @param dat Component data to move.
-         * @return ComID to the new component.
-         */
-        ComID emplaceComponent(EntID eid, ComponentData&& dat)
-        {
-            ComID rv;
-            auto& comvec = entities.erase(eid.iter,eid.iter)->components;
-            auto guid = dat.getGUID();
-
-            auto pos = lower_bound(begin(comvec), end(comvec), dat);
-
-            rv.eid = eid;
-
-            if (pos != end(comvec) && pos->getGUID() == guid)
-            {
-                rv.iter = pos;
-                pos->getVal() = move(dat.getVal());
-            }
-            else
-            {
-                rv.iter = comvec.emplace(pos, move(dat));
-                updateSystems(eid);
-            }
-
-            return rv;
-        }
-
-        /*! Displace a component out of this Database.
-         *
-         * Moves the given component out of this Database.
-         *
-         * @warning
-         * All ComIDs associated with the Entity associated with the given
-         * component are invalidated.
-         *
-         * @param cid ComID of the component to displace.
-         * @return Component data.
-         */
-        ComponentData displaceComponent(ComID cid)
-        {
-            auto& comvec = entities.erase(cid.eid.iter,cid.eid.iter)->components;
-            ComponentData rv = move(*comvec.erase(cid.iter,cid.iter));
-            comvec.erase(cid.iter);
-            updateSystems(cid.eid);
-            return rv;
-        }
-
-        /*! Visit the Database.
-         *
-         * Visit the Entities in the Database that match the given function's parameter types.
-         *
-         * The following parameter categories are accepted:
-         *
-         * - Component Data: Any `T` except rvalue-references, matches entities that have component `T`.
-         * - Component Tag: `Tag<T>` value, matches entities that have component `Tag<T>`.
-         * - Component Info: `ComInfo<T>` value, matches entities that have component `T`.
-         * - Inverted: `Not<T>` value, matches entities that do *not* have component `T`.
-         * - EntID: Matches all entities.
-         *
-         * Component Data and Info parameters will refer to the entity's matching component.
-         * EntID parameters will contain the entity's EntID.
-         *
-         * Entities that do not match all given parameter conditions will be skipped.
-         *
-         * @warning Entities are visited in no particular order, so adding and removing entities from the visitor
-         *          function could result in non-deterministic behavior.
-         *
-         * @tparam Visitor Visitor function type.
-         * @param visitor Visitor function.
-         */
-        template <typename Visitor>
-        void visit(Visitor&& visitor)
-        {
-            using Traits = VisitorTraits<Database, Visitor>;
-
-            auto& system = systems[typeid(typename Traits::SystemKey)];
-
-            if (!system)
-            {
-                system = make_unique<SystemImpl<Traits>>();
-
-                for (auto i=begin(entities), e=end(entities); i!=e; ++i)
+                auto eid = com_set.get_entid(cid);
+                if (Key::check(*this, eid))
                 {
-                    EntID eid;
-                    eid.iter = i;
-                    system->update(eid);
+                    Traits::apply(*this, eid, cid, visitor);
                 }
             }
+        }
+    }
 
-            for (auto&& eid : system->get_entities())
+    template <typename Visitor, typename Component>
+    void visit_helper_primary(Visitor&& visitor, Primary<Component>, false_type)
+    {
+        using Traits = VisitorTraits<Database, Visitor>;
+        using Key = typename Traits::Key;
+
+        if (auto com_set_ptr = getComSet<Component>())
+        {
+            auto& com_set = *com_set_ptr;
+
+            for (auto cid = 0; cid < com_set.size(); ++cid)
             {
-                Traits::apply(eid,visitor);
+                auto eid = com_set.get_entid(cid);
+                if (entities[eid].components.get(0))
+                {
+                    Traits::apply(*this, eid, cid, visitor);
+                }
             }
         }
+    }
 
-    // query
+    template <typename Visitor>
+    void visit_helper(Visitor&& visitor, Primary<void>)
+    {
+        using Traits = VisitorTraits<Database, Visitor>;
+        using Key = typename Traits::Key;
 
-        /*! Query the Database.
-         *
-         * Queries the Database for Entities that match the given template parameters.
-         *
-         * Returns a `std::vector<std::tuple<Ts...>>` where each element is a tuple of values filled by calling
-         * `visit([](Ts...){})` and forwarding the visitor's parameters to each tuple.
-         *
-         * There will be one element in the returned vector for each entity visited.
-         *
-         * @tparam Ts Query parameters.
-         * @return Query results.
-         */
-        template <typename... Ts>
-        std::vector<std::tuple<Ts...>> query()
+        for (auto eid = 0; eid < entities.size(); ++eid)
         {
-            std::vector<std::tuple<Ts...>> rv;
-
-            visit([&](Ts... params){
-                rv.emplace_back(std::forward<Ts>(params)...);
-            });
-
-            return rv;
-        }
-
-    // status functions
-
-        /*! Get the number of entities in the Database.
-         *
-         * @return Number of entities in the Database.
-         */
-        auto size() const
-        {
-            return entities.size();
-        }
-
-    private:
-        AllocList<Entity> entities;
-        unordered_map<type_index, unique_ptr<System<EntID>>> systems;
-
-        void updateSystems(EntID eid) {
-            for (auto&& system : systems) {
-                system.second->update(eid);
+            if (Key::check(*this, eid))
+            {
+                Traits::apply(*this, eid, visitor);
             }
         }
+    }
 
-        void removeFromSystems(EntID eid) {
-            for (auto&& system : systems) {
-                system.second->remove(eid);
-            }
-        }
+    vector<Entity> entities;
+    vector<EntID> free_entities;
+    vector<unique_ptr<SparseSet>> component_sets;
 };
 
 } // namespace _detail
 
-using _detail::ComponentData;
-using _detail::Entity;
 using _detail::Database;
+using _detail::Has;
 using _detail::Not;
 using _detail::Tag;
+using _detail::Maybe;
 
 } // namespace Ginseng
 

@@ -5,8 +5,9 @@
 #include <array>
 #include <memory>
 
-using DB = Ginseng::Database<>;
+using DB = Ginseng::Database;
 using Ginseng::Not;
+using Ginseng::Maybe;
 using EntID = DB::EntID;
 using ComID = DB::ComID;
 
@@ -40,39 +41,28 @@ TEST_CASE("Components can be added, accessed, and removed from entities", "[gins
         double y;
     };
 
-    auto com1 = db.makeComponent(ent, ComA{7});
-    REQUIRE(bool(com1) == true);
-    ComA *com1ptr1 = &com1.data();
+    db.makeComponent(ent, ComA{7});
+    REQUIRE(db.hasComponent<ComA>(ent) == true);
+    ComA *com1ptr1 = &db.getComponent<ComA>(ent);
     REQUIRE(com1ptr1 != nullptr);
 
-    auto com1info = ent.get<ComA>();
-    REQUIRE(bool(com1info) == true);
-    ComA *com1ptr2 = &com1info.data();
-    REQUIRE(com1ptr1 == com1ptr2);
-
-
-    auto com2 = db.makeComponent(ent, ComB{4.2});
-    REQUIRE(bool(com2) == true);
-    ComB *com2ptr1 = &com2.data();
+    db.makeComponent(ent, ComB{4.2});
+    REQUIRE(db.hasComponent<ComB>(ent) == true);
+    ComB *com2ptr1 = &db.getComponent<ComB>(ent);
     REQUIRE(com2ptr1 != nullptr);
 
-    auto com2info = ent.get<ComB>();
-    REQUIRE(bool(com2info) == true);
-    ComB *com2ptr2 = &com2info.data();
-    REQUIRE(com2ptr1 == com2ptr2);
+    REQUIRE(&db.getComponent<ComA>(ent) == com1ptr1);
+    REQUIRE(db.getComponent<ComA>(ent).x == 7);
 
-    REQUIRE(&ent.get<ComA>().data() == com1ptr1);
-    REQUIRE(ent.get<ComA>().data().x == 7);
+    REQUIRE(&db.getComponent<ComB>(ent) == com2ptr1);
+    REQUIRE(db.getComponent<ComB>(ent).y == 4.2);
 
-    REQUIRE(&ent.get<ComB>().data() == com2ptr1);
-    REQUIRE(ent.get<ComB>().data().y == 4.2);
+    db.eraseComponent<ComA>(ent);
 
-    db.eraseComponent(ent.get<ComA>().id());
+    REQUIRE(&db.getComponent<ComB>(ent) == com2ptr1);
+    REQUIRE(db.getComponent<ComB>(ent).y == 4.2);
 
-    REQUIRE(&ent.get<ComB>().data() == com2ptr1);
-    REQUIRE(ent.get<ComB>().data().y == 4.2);
-
-    db.eraseComponent(ent.get<ComB>().id());
+    db.eraseComponent<ComB>(ent);
 }
 
 TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
@@ -88,7 +78,7 @@ TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
     auto make_ent = [&](bool give_Data1, bool give_Data2)
     {
         auto ent = db.makeEntity();
-        auto id_com = db.makeComponent(ent, ID{next_id});
+        db.makeComponent(ent, ID{next_id});
         ++next_id;
         if (give_Data1) { db.makeComponent(ent, Data1{7}); }
         if (give_Data2) { db.makeComponent(ent, Data2{nullptr}); }
@@ -175,22 +165,26 @@ TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
     REQUIRE(num_visited == 0);
 }
 
-TEST_CASE("ComInfo can be used instead of components", "[ginseng]")
+TEST_CASE("Maybe can be used instead of components", "[ginseng]")
 {
     DB db;
 
     struct Data {};
+    struct Data2 {};
 
     auto ent = db.makeEntity();
-    auto info = db.makeComponent(ent,Data{});
+    db.makeComponent(ent,Data{});
 
     int visited = 0;
-    DB::ComInfo<Data> info2;
-    db.visit([&](DB::ComInfo<Data>& data){
+    Maybe<Data> mdata;
+    Maybe<Data2> mdata2;
+    db.visit([&](Maybe<Data> data, Maybe<Data2> data2){
         ++visited;
-        info2 = data;
+        mdata = data;
+        mdata2 = data2;
     });
     REQUIRE(visited == 1);
-    REQUIRE(info2.id() == info.id());
+    REQUIRE(bool(mdata) == true);
+    REQUIRE(bool(mdata2) == false);
 }
 

@@ -2,9 +2,10 @@
 
 #include <ginseng/ginseng.hpp>
 
-using DB = Ginseng::Database<>;
+using DB = Ginseng::Database;
 using Ginseng::Not;
 using Ginseng::Tag;
+using Ginseng::Maybe;
 using EntID = DB::EntID;
 using ComID = DB::ComID;
 
@@ -16,26 +17,40 @@ TEST_CASE("Tag types do not use dynamic allocation", "[ginseng]")
     DB db;
 
     struct SomeTag {};
+    struct SomeTag2 {};
 
     auto ent = db.makeEntity();
-    DB::ComInfo<Tag<SomeTag>> tag_info = db.makeComponent(ent, Tag<SomeTag>{});
+    db.makeComponent(ent, Tag<SomeTag>{});
 
     int visited;
-    DB::ComInfo<Tag<SomeTag>> visited_info;
 
     visited = 0;
     db.visit([&](Tag<SomeTag>){
         ++visited;
     });
-
     REQUIRE(visited == 1);
 
     visited = 0;
-    db.visit([&](DB::ComInfo<Tag<SomeTag>> info){
+    db.visit([&](Tag<SomeTag2>){
         ++visited;
-        visited_info = info;
     });
+    REQUIRE(visited == 0);
 
+    Maybe<Tag<SomeTag>> minfo;
+    visited = 0;
+    db.visit([&](Maybe<Tag<SomeTag>> info){
+        ++visited;
+        minfo = info;
+    });
     REQUIRE(visited == 1);
-    REQUIRE(visited_info.id() == tag_info.id());
+    REQUIRE(bool(minfo) == true);
+    
+    Maybe<Tag<SomeTag2>> minfo2;
+    visited = 0;
+    db.visit([&](Maybe<Tag<SomeTag2>> info){
+        ++visited;
+        minfo2 = info;
+    });
+    REQUIRE(visited == 1);
+    REQUIRE(bool(minfo2) == false);
 }
