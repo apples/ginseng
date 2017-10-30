@@ -28,7 +28,7 @@ An example of Ginseng being used in a game:
 ```c++
 #include <ginseng/ginseng.hpp>
 
-using DB = Ginseng::Database<>;
+using Ginseng::Database;
 using Ginseng::Not;
 using Ginseng::Tag;
 
@@ -44,15 +44,13 @@ struct PositionCom {
 };
 
 // Tag components will not contain a value (no allocation).
-
-struct IsEnemy {};
-using IsEnemyTag = Tag<IsEnemy>;
+using IsEnemyTag = Tag<struct IsEnemy>;
 
 struct Game {
-    DB db; // Databases are value types.
+    Database db; // Databases are value types.
     
     Game() {
-        // db.makeEntity() returns an entity ID (similar to an iterator).
+        // db.makeEntity() returns an entity ID.
         auto player = db.makeEntity();
         
         // db.makeComponent() copies the given component into the entity.
