@@ -1,6 +1,12 @@
 # Ginseng
 
-An entity component framework designed for use in games.
+Ginseng is an entity-component-system (ECS) library designed for use in games.
+
+The main advantage over similar libraries is that the component types do not need to be listed or registered.
+Component types are detected dynamically.
+
+Any function-like object can be used as a system.
+The function's parameters are used to determine the required components.
 
 ## Features
 
@@ -81,4 +87,8 @@ struct Game {
 
 ## License
 
+MIT
+
 See [LICENSE.txt](https://github.com/dbralir/ginseng/blob/master/LICENSE.txt).
+
+Copyright 2015 Jeramy Harrison
