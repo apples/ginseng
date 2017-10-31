@@ -41,7 +41,9 @@ namespace _detail {
 
     class DynamicBitset {
     public:
-        static constexpr auto N_BITS = 64;
+        using size_type = size_t;
+
+        static constexpr size_type N_BITS = 64;
 
         DynamicBitset() : sdo(0), numbits(N_BITS) {}
         
@@ -82,9 +84,9 @@ namespace _detail {
             }
         }
 
-        int size() const { return numbits; }
+        size_type size() const { return numbits; }
 
-        void resize(int ns) {
+        void resize(size_type ns) {
             if (ns > numbits) {
                 auto count = (ns+N_BITS-1u)/N_BITS;
                 auto newlen = count * N_BITS;
@@ -100,18 +102,18 @@ namespace _detail {
             }
         }
 
-        bool get(int i) const {
+        bool get(size_type i) const {
             if (__builtin_expect(numbits==N_BITS,1)) return sdo[i];
             else return dyna[i/64][i%64];
         }
 
-        void set(int i) {
+        void set(size_type i) {
             resize(i+1);
             if (__builtin_expect(numbits==N_BITS,1)) sdo[i] = true;
             else dyna[i/64][i%64] = true;
         }
 
-        void unset(int i) {
+        void unset(size_type i) {
             resize(i+1);
             if (__builtin_expect(numbits==N_BITS,1)) sdo[i] = false;
             else dyna[i/64][i%64] = false;
@@ -130,7 +132,7 @@ namespace _detail {
             bitset<N_BITS> sdo;
             unique_ptr<bitset<N_BITS>[]> dyna;
         };
-        int numbits;
+        size_type numbits;
     };
 
 // Entity
@@ -188,7 +190,7 @@ namespace _detail {
     private:
         template <typename DB, typename EntID, typename... Components>
         friend struct Applier;
-        Maybe(T* com) : com(com) {}
+        Maybe(T* c) : com(c) {}
         T* com;
     };
 
@@ -209,7 +211,7 @@ namespace _detail {
     private:
         template <typename DB, typename EntID, typename... Components>
         friend struct Applier;
-        Maybe(bool tag) : tag(tag) {}
+        Maybe(bool t) : tag(t) {}
         bool tag;
     };
 
@@ -381,7 +383,7 @@ namespace _detail {
             static void try_apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
             {
                 using Traits = ComponentTraits<DB,PrimaryComponent>;
-                auto& com = db.template getComponent<typename Traits::com>(eid, primary_cid);
+                auto& com = db.template getComponentById<typename Traits::com>(primary_cid);
                 return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
             }
         };
@@ -393,7 +395,7 @@ namespace _detail {
             using ComID = typename DB::ComID;
 
             template <typename Visitor, typename... Args>
-            static void try_apply(DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args)
+            static void try_apply(DB&, EntID, ComID, Visitor&& visitor, Args&&... args)
             {
                 std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
             }
@@ -540,7 +542,7 @@ namespace _detail {
         struct VisitorKey<DB>
         {
             using EntID = typename DB::EntID;
-            static bool check(DB& db, EntID eid)
+            static bool check(DB&, EntID)
             {
                 return true;
             }
@@ -708,7 +710,7 @@ namespace _detail {
     public:
         virtual ~SparseSetImpl() = default;
 
-        size_type assign(size_type entid, T com)
+        void assign(size_type entid, T com)
         {
             if(entid >= entid_to_comid.size()) {
                 entid_to_comid.resize(entid+1, -1);
@@ -719,8 +721,6 @@ namespace _detail {
             entid_to_comid[entid] = comid;
             comid_to_entid.push_back(entid);
             components.push_back(move(com));
-            
-            return comid;
         }
 
         virtual void remove(size_type entid) override final
@@ -769,7 +769,6 @@ namespace _detail {
     {
     public:
         virtual ~SparseSetImpl() = default;
-        int assign(size_type entid, T&& com) {}
         virtual void remove(size_type entid) override final {}
     };
 
@@ -831,7 +830,7 @@ public:
     */
     void eraseEntity(EntID eid)
     {
-        for (int i=1; i<entities[eid].components.size(); ++i) {
+        for (DynamicBitset::size_type i=1; i<entities[eid].components.size(); ++i) {
             if (entities[eid].components.get(i)) {
                 component_sets[i]->remove(eid);
             }
@@ -1004,7 +1003,7 @@ private:
     friend struct Applier;
 
     template <typename Com>
-    Com& getComponent(EntID eid, ComID cid)
+    Com& getComponentById(ComID cid)
     {
         auto& com_set = *getComSet<Com>();
         return com_set.get_com(cid);
@@ -1051,7 +1050,7 @@ private:
         {
             auto& com_set = *com_set_ptr;
 
-            for (auto cid = 0; cid < com_set.size(); ++cid)
+            for (ComID cid = 0; cid < com_set.size(); ++cid)
             {
                 auto eid = com_set.get_entid(cid);
                 if (Key::check(*this, eid))
@@ -1066,13 +1065,12 @@ private:
     void visit_helper_primary(Visitor&& visitor, Primary<Component>, false_type)
     {
         using Traits = VisitorTraits<Database, Visitor>;
-        using Key = typename Traits::Key;
 
         if (auto com_set_ptr = getComSet<Component>())
         {
             auto& com_set = *com_set_ptr;
 
-            for (auto cid = 0; cid < com_set.size(); ++cid)
+            for (ComID cid = 0; cid < com_set.size(); ++cid)
             {
                 auto eid = com_set.get_entid(cid);
                 if (entities[eid].components.get(0))
