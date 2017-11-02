@@ -45,12 +45,14 @@ public:
 
     static constexpr size_type N_BITS = 64;
 
-    DynamicBitset() : sdo(0), numbits(N_BITS) {}
+    DynamicBitset()
+        : sdo(0), numbits(N_BITS) {}
 
     DynamicBitset(const DynamicBitset&) = delete;
     DynamicBitset& operator=(const DynamicBitset&) = delete;
 
-    DynamicBitset(DynamicBitset&& other) : sdo(0), numbits(N_BITS) {
+    DynamicBitset(DynamicBitset&& other)
+        : sdo(0), numbits(N_BITS) {
         if (other.numbits == N_BITS) {
             sdo = other.sdo;
         } else {
@@ -184,7 +186,8 @@ struct Tag {};
 template <typename T>
 class Maybe {
 public:
-    Maybe() : com(nullptr) {}
+    Maybe()
+        : com(nullptr) {}
     Maybe(const Maybe&) = default;
     Maybe(Maybe&&) = default;
     Maybe& operator=(const Maybe&) = default;
@@ -205,7 +208,8 @@ public:
 private:
     template <typename DB, typename EntID, typename... Components>
     friend struct Applier;
-    Maybe(T* c) : com(c) {}
+    Maybe(T* c)
+        : com(c) {}
     T* com;
 };
 
@@ -216,7 +220,8 @@ private:
 template <typename T>
 class Maybe<Tag<T>> {
 public:
-    Maybe() : tag(false) {}
+    Maybe()
+        : tag(false) {}
     Maybe(const Maybe&) = default;
     Maybe(Maybe&&) = default;
     Maybe& operator=(const Maybe&) = default;
@@ -228,7 +233,8 @@ public:
 private:
     template <typename DB, typename EntID, typename... Components>
     friend struct Applier;
-    Maybe(bool t) : tag(t) {}
+    Maybe(bool t)
+        : tag(t) {}
     bool tag;
 };
 
@@ -300,8 +306,7 @@ struct Applier<DB, PrimaryComponent, HeadCom, TailComs...> {
     template <typename Traits, typename Visitor, typename... Args>
     static void helper(ComponentTags::noload, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args) {
         if (db.template hasComponent<typename Traits::com>(eid)) {
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Has<typename Traits::com>{});
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Has<typename Traits::com>{});
         }
     }
 
@@ -314,8 +319,7 @@ struct Applier<DB, PrimaryComponent, HeadCom, TailComs...> {
     template <typename Traits, typename Visitor, typename... Args>
     static void inverted_helper(ComponentTags::positive, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args) {
         if (!db.template hasComponent<typename Traits::com>(eid)) {
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Not<typename Traits::com>{});
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Not<typename Traits::com>{});
         }
     }
 
@@ -343,22 +347,18 @@ struct Applier<DB, PrimaryComponent, HeadCom, TailComs...> {
     static void nofail_helper(ComponentTags::normal, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args) {
         if (db.template hasComponent<typename Traits::com>(eid)) {
             auto& com = db.template getComponent<typename Traits::com>(eid);
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Maybe<typename Traits::com>(&com));
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(&com));
         } else {
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Maybe<typename Traits::com>(nullptr));
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(nullptr));
         }
     }
 
     template <typename Traits, typename Visitor, typename... Args>
     static void nofail_helper(ComponentTags::tagged, DB& db, EntID eid, ComID primary_cid, Visitor&& visitor, Args&&... args) {
         if (db.template hasComponent<typename Traits::com>(eid)) {
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Maybe<typename Traits::com>(true));
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(true));
         } else {
-            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)...,
-                                                                         Maybe<typename Traits::com>(false));
+            return Applier<DB, PrimaryComponent, TailComs...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., Maybe<typename Traits::com>(false));
         }
     }
 
