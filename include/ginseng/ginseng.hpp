@@ -40,7 +40,7 @@ TypeGuid getTypeGuid() {
 // DynamicBitset
 
 class DynamicBitset {
-    public:
+public:
     using size_type = size_t;
 
     static constexpr size_type N_BITS = 64;
@@ -84,7 +84,9 @@ class DynamicBitset {
         }
     }
 
-    size_type size() const { return numbits; }
+    size_type size() const {
+        return numbits;
+    }
 
     void resize(size_type ns) {
         if (ns > numbits) {
@@ -133,7 +135,7 @@ class DynamicBitset {
         }
     }
 
-    private:
+private:
     union {
         bitset<N_BITS> sdo;
         unique_ptr<bitset<N_BITS>[]> dyna;
@@ -178,18 +180,26 @@ struct Tag {};
  */
 template <typename T>
 class Maybe {
-    public:
+public:
     Maybe() : com(nullptr) {}
     Maybe(const Maybe&) = default;
     Maybe(Maybe&&) = default;
     Maybe& operator=(const Maybe&) = default;
     Maybe& operator=(Maybe&&) = default;
-    T* operator->() const { return com; }
-    T& operator*() const { return *com; }
-    explicit operator bool() const { return com; }
-    T& get() const { return *com; }
+    T* operator->() const {
+        return com;
+    }
+    T& operator*() const {
+        return *com;
+    }
+    explicit operator bool() const {
+        return com;
+    }
+    T& get() const {
+        return *com;
+    }
 
-    private:
+private:
     template <typename DB, typename EntID, typename... Components>
     friend struct Applier;
     Maybe(T* c) : com(c) {}
@@ -202,15 +212,17 @@ class Maybe {
  */
 template <typename T>
 class Maybe<Tag<T>> {
-    public:
+public:
     Maybe() : tag(false) {}
     Maybe(const Maybe&) = default;
     Maybe(Maybe&&) = default;
     Maybe& operator=(const Maybe&) = default;
     Maybe& operator=(Maybe&&) = default;
-    explicit operator bool() const { return tag; }
+    explicit operator bool() const {
+        return tag;
+    }
 
-    private:
+private:
     template <typename DB, typename EntID, typename... Components>
     friend struct Applier;
     Maybe(bool t) : tag(t) {}
@@ -486,17 +498,25 @@ struct VisitorKey<DB, HeadCom, TailComs...> {
     using EntID = typename DB::EntID;
     using Traits = ComponentTraits<DB, HeadCom>;
 
-    static bool helper(DB& db, EntID eid, ComponentTags::positive) { return VisitorKey<DB, TailComs...>::check(db, eid) && db.template hasComponent<typename Traits::com>(eid); }
+    static bool helper(DB& db, EntID eid, ComponentTags::positive) {
+        return VisitorKey<DB, TailComs...>::check(db, eid) && db.template hasComponent<typename Traits::com>(eid);
+    }
 
-    static bool helper(DB& db, EntID eid, ComponentTags::meta) { return VisitorKey<DB, TailComs...>::check(db, eid); }
+    static bool helper(DB& db, EntID eid, ComponentTags::meta) {
+        return VisitorKey<DB, TailComs...>::check(db, eid);
+    }
 
-    static bool check(DB& db, EntID eid) { return helper(db, eid, typename Traits::tag{}); }
+    static bool check(DB& db, EntID eid) {
+        return helper(db, eid, typename Traits::tag{});
+    }
 };
 
 template <typename DB>
 struct VisitorKey<DB> {
     using EntID = typename DB::EntID;
-    static bool check(DB&, EntID) { return true; }
+    static bool check(DB&, EntID) {
+        return true;
+    }
 };
 
 // First
@@ -623,7 +643,7 @@ struct VisitorTraits<DB, R (Visitor::*)(Ts...) &&> : VisitorTraitsImpl<DB, std::
 // SparseSet
 
 class SparseSet {
-    public:
+public:
     using size_type = std::size_t;
     virtual ~SparseSet() = 0;
     virtual void remove(size_type entid) = 0;
@@ -633,7 +653,7 @@ inline SparseSet::~SparseSet() = default;
 
 template <typename T>
 class SparseSetImpl final : public SparseSet {
-    public:
+public:
     virtual ~SparseSetImpl() = default;
 
     void assign(size_type entid, T com) {
@@ -662,15 +682,23 @@ class SparseSetImpl final : public SparseSet {
         components.pop_back();
     }
 
-    size_type get_comid(size_type entid) const { return entid_to_comid[entid]; }
+    size_type get_comid(size_type entid) const {
+        return entid_to_comid[entid];
+    }
 
-    T& get_com(size_type comid) { return components[comid]; }
+    T& get_com(size_type comid) {
+        return components[comid];
+    }
 
-    size_type get_entid(size_type comid) const { return comid_to_entid[comid]; }
+    size_type get_entid(size_type comid) const {
+        return comid_to_entid[comid];
+    }
 
-    auto size() const { return components.size(); }
+    auto size() const {
+        return components.size();
+    }
 
-    private:
+private:
     vector<size_type> entid_to_comid;
     vector<size_type> comid_to_entid;
     vector<T> components;
@@ -678,7 +706,7 @@ class SparseSetImpl final : public SparseSet {
 
 template <typename T>
 class SparseSetImpl<Tag<T>> final : public SparseSet {
-    public:
+public:
     virtual ~SparseSetImpl() = default;
     virtual void remove(size_type entid) override final {}
 };
@@ -693,7 +721,7 @@ class SparseSetImpl<Tag<T>> final : public SparseSet {
  * considered "thread-safe".
  */
 class Database {
-    public:
+public:
     // IDs
 
     /*! Entity ID.
@@ -888,9 +916,11 @@ class Database {
      *
      * @return Number of entities in the Database.
      */
-    auto size() const { return entities.size() - free_entities.size(); }
+    auto size() const {
+        return entities.size() - free_entities.size();
+    }
 
-    private:
+private:
     template <typename DB, typename PrimaryComponent, typename... Components>
     friend struct Applier;
 
