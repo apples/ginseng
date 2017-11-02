@@ -1,0 +1,12 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: Empty
+AlwaysBreakTemplateDeclarations: true
+ColumnLimit: 0
+IndentWidth: 4
+PointerAlignment: Left
+Standard: Cpp11
+TabWidth: 4
+...
