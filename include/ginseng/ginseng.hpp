@@ -105,26 +105,29 @@ public:
     }
 
     bool get(size_type i) const {
-        if (numbits == N_BITS)
+        if (numbits == N_BITS) {
             return sdo[i];
-        else
+        } else {
             return dyna[i / 64][i % 64];
+        }
     }
 
     void set(size_type i) {
         resize(i + 1);
-        if (numbits == N_BITS)
+        if (numbits == N_BITS) {
             sdo[i] = true;
-        else
+        } else {
             dyna[i / 64][i % 64] = true;
+        }
     }
 
     void unset(size_type i) {
         resize(i + 1);
-        if (numbits == N_BITS)
+        if (numbits == N_BITS) {
             sdo[i] = false;
-        else
+        } else {
             dyna[i / 64][i % 64] = false;
+        }
     }
 
     void zero() {
