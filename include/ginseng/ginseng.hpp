@@ -305,6 +305,49 @@ struct component_traits<DB, typename DB::ent_id> {
     using component = void;
 };
 
+// First
+
+template <typename T, typename... Ts>
+struct first {
+    using type = T;
+};
+
+template <typename... Ts>
+using first_t = typename first<Ts...>::type;
+
+// GetPrimary
+
+template <typename T>
+struct primary {
+    using type = T;
+};
+
+template <typename DB, typename HeadTag, typename... Components>
+struct get_primary;
+
+template <typename DB, typename... Components>
+using get_primary_t = typename get_primary<DB, typename component_traits<DB, first_t<Components...>>::category, Components...>::type;
+
+template <typename DB, typename HeadTag, typename HeadCom, typename... Components>
+struct get_primary<DB, HeadTag, HeadCom, Components...> {
+    using type = get_primary_t<DB, Components...>;
+};
+
+template <typename DB, typename HeadTag, typename HeadCom>
+struct get_primary<DB, HeadTag, HeadCom> {
+    using type = primary<void>;
+};
+
+template <typename DB, typename HeadCom, typename... Components>
+struct get_primary<DB, component_tags::normal, HeadCom, Components...> {
+    using type = primary<HeadCom>;
+};
+
+template <typename DB, typename HeadCom>
+struct get_primary<DB, component_tags::normal, HeadCom> {
+    using type = primary<HeadCom>;
+};
+
 // Applier
 
 template <typename DB, typename Traits>
@@ -381,10 +424,10 @@ template <typename DB, typename PrimaryComponent, typename... Components>
 struct applier;
 
 template <typename DB, typename PrimaryComponent, typename HeadCom, typename... TailComs>
-struct applier<DB, PrimaryComponent, HeadCom, TailComs...> {
+struct applier<DB, primary<PrimaryComponent>, HeadCom, TailComs...> {
     using ent_id = typename DB::ent_id;
     using com_id = typename DB::com_id;
-    using next_applier = applier<DB, PrimaryComponent, TailComs...>;
+    using next_applier = applier<DB, primary<PrimaryComponent>, TailComs...>;
 
     template <typename Visitor, typename... Args>
     static void try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
@@ -396,10 +439,10 @@ struct applier<DB, PrimaryComponent, HeadCom, TailComs...> {
 };
 
 template <typename DB, typename PrimaryComponent, typename... TailComs>
-struct applier<DB, PrimaryComponent, PrimaryComponent, TailComs...> {
+struct applier<DB, primary<PrimaryComponent>, PrimaryComponent, TailComs...> {
     using ent_id = typename DB::ent_id;
     using com_id = typename DB::com_id;
-    using next_applier = applier<DB, PrimaryComponent, TailComs...>;
+    using next_applier = applier<DB, primary<PrimaryComponent>, TailComs...>;
 
     template <typename Visitor, typename... Args>
     static void try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
@@ -410,7 +453,7 @@ struct applier<DB, PrimaryComponent, PrimaryComponent, TailComs...> {
 };
 
 template <typename DB, typename PrimaryComponent>
-struct applier<DB, PrimaryComponent> {
+struct applier<DB, primary<PrimaryComponent>> {
     using ent_id = typename DB::ent_id;
     using com_id = typename DB::com_id;
 
@@ -422,14 +465,14 @@ struct applier<DB, PrimaryComponent> {
 
 // VisitorKey
 
-template <typename DB, typename... Components>
+template <typename DB, typename PrimaryComponent, typename... Components>
 struct visitor_key;
 
-template <typename DB, typename HeadCom, typename... TailComs>
-struct visitor_key<DB, HeadCom, TailComs...> {
+template <typename DB, typename PrimaryComponent, typename HeadCom, typename... TailComs>
+struct visitor_key<DB, primary<PrimaryComponent>, HeadCom, TailComs...> {
     using ent_id = typename DB::ent_id;
     using traits = component_traits<DB, HeadCom>;
-    using next_key = visitor_key<DB, TailComs...>;
+    using next_key = visitor_key<DB, primary<PrimaryComponent>, TailComs...>;
 
     static bool helper(DB& db, ent_id eid, component_tags::positive) {
         return next_key::check(db, eid) && db.template has_component<typename traits::component>(eid);
@@ -444,55 +487,22 @@ struct visitor_key<DB, HeadCom, TailComs...> {
     }
 };
 
-template <typename DB>
-struct visitor_key<DB> {
+template <typename DB, typename PrimaryComponent, typename... TailComs>
+struct visitor_key<DB, primary<PrimaryComponent>, PrimaryComponent, TailComs...> {
+    using ent_id = typename DB::ent_id;
+    using next_key = visitor_key<DB, primary<PrimaryComponent>, TailComs...>;
+
+    static bool check(DB& db, ent_id eid) {
+        return next_key::check(db, eid);
+    }
+};
+
+template <typename DB, typename PrimaryComponent>
+struct visitor_key<DB, primary<PrimaryComponent>> {
     using ent_id = typename DB::ent_id;
     static bool check(DB&, ent_id) {
         return true;
     }
-};
-
-// First
-
-template <typename T, typename... Ts>
-struct first {
-    using type = T;
-};
-
-template <typename... Ts>
-using first_t = typename first<Ts...>::type;
-
-// GetPrimary
-
-template <typename T>
-struct primary {
-    using type = T;
-};
-
-template <typename DB, typename HeadTag, typename... Components>
-struct get_primary;
-
-template <typename DB, typename... Components>
-using get_primary_t = typename get_primary<DB, typename component_traits<DB, first_t<Components...>>::category, Components...>::type;
-
-template <typename DB, typename HeadTag, typename HeadCom, typename... Components>
-struct get_primary<DB, HeadTag, HeadCom, Components...> {
-    using type = get_primary_t<DB, Components...>;
-};
-
-template <typename DB, typename HeadTag, typename HeadCom>
-struct get_primary<DB, HeadTag, HeadCom> {
-    using type = primary<void>;
-};
-
-template <typename DB, typename HeadCom, typename... Components>
-struct get_primary<DB, component_tags::normal, HeadCom, Components...> {
-    using type = primary<HeadCom>;
-};
-
-template <typename DB, typename HeadCom>
-struct get_primary<DB, component_tags::normal, HeadCom> {
-    using type = primary<HeadCom>;
 };
 
 // FindOther
@@ -504,32 +514,32 @@ template <typename DB, typename T, typename... Ts>
 using find_other_t = typename find_other<DB, T, std::is_base_of<component_tags::positive, typename component_traits<DB, first_t<Ts...>>::category>::value, Ts...>::type;
 
 template <typename DB, typename T, typename U, typename... Ts>
-struct find_other<DB, T, true, U, Ts...> {
+struct find_other<DB, primary<T>, true, U, Ts...> {
     using type = std::true_type;
 };
 
 template <typename DB, typename T, typename... Ts>
-struct find_other<DB, T, true, T, Ts...> {
-    using type = find_other_t<DB, T, Ts...>;
+struct find_other<DB, primary<T>, true, T, Ts...> {
+    using type = find_other_t<DB, primary<T>, Ts...>;
 };
 
 template <typename DB, typename T, typename U, typename... Ts>
-struct find_other<DB, T, false, U, Ts...> {
-    using type = find_other_t<DB, T, Ts...>;
+struct find_other<DB, primary<T>, false, U, Ts...> {
+    using type = find_other_t<DB, primary<T>, Ts...>;
 };
 
 template <typename DB, typename T, typename U>
-struct find_other<DB, T, false, U> {
+struct find_other<DB, primary<T>, false, U> {
     using type = std::false_type;
 };
 
 template <typename DB, typename T>
-struct find_other<DB, T, true, T> {
+struct find_other<DB, primary<T>, true, T> {
     using type = std::false_type;
 };
 
 template <typename DB, typename T>
-struct find_other<DB, T, false, T> {};
+struct find_other<DB, primary<T>, false, T> {};
 
 // VisitorTraits
 
@@ -537,13 +547,13 @@ template <typename DB, typename... Components>
 struct visitor_traits_impl {
     using ent_id = typename DB::ent_id;
     using com_id = typename DB::com_id;
-    using key = visitor_key<DB, Components...>;
     using primary_component = get_primary_t<DB, Components...>;
-    using has_other_components = find_other_t<DB, typename primary_component::type, Components...>;
+    using has_other_components = find_other_t<DB, primary_component, Components...>;
+    using key = visitor_key<DB, primary_component, Components...>;
 
     template <typename Visitor>
     static void apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor) {
-        applier<DB, typename primary_component::type, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
+        applier<DB, primary_component, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
     }
 };
 
