@@ -13,11 +13,9 @@ namespace ginseng {
 
 namespace _detail {
 
-using namespace std;
-
 // Type Guid
 
-using type_guid = size_t;
+using type_guid = std::size_t;
 
 inline type_guid get_next_type_guid() noexcept {
     static type_guid x = 0;
@@ -41,7 +39,7 @@ type_guid get_type_guid() {
 
 class dynamic_bitset {
 public:
-    using size_type = size_t;
+    using size_type = std::size_t;
 
     static constexpr size_type word_size = 64;
 
@@ -56,8 +54,8 @@ public:
         if (other.numbits == word_size) {
             sdo = other.sdo;
         } else {
-            new (&dyna) unique_ptr<bitset<word_size>[]>(move(other.dyna));
-            other.dyna.~unique_ptr<bitset<word_size>[]>();
+            new (&dyna) std::unique_ptr<std::bitset<word_size>[]>(std::move(other.dyna));
+            other.dyna.~unique_ptr<std::bitset<word_size>[]>();
             numbits = other.numbits;
             other.numbits = word_size;
             other.sdo = 0;
@@ -65,14 +63,16 @@ public:
     }
 
     dynamic_bitset& operator=(dynamic_bitset&& other) {
-        if (numbits != word_size) {
-            dyna.~unique_ptr<bitset<word_size>[]>();
+        if (numbits == word_size) {
+            sdo.~bitset<word_size>();
+        } else {
+            dyna.~unique_ptr<std::bitset<word_size>[]>();
         }
         if (other.numbits == word_size) {
             sdo = other.sdo;
         } else {
-            new (&dyna) unique_ptr<bitset<word_size>[]>(move(other.dyna));
-            other.dyna.~unique_ptr<bitset<word_size>[]>();
+            new (&dyna) std::unique_ptr<std::bitset<word_size>[]>(std::move(other.dyna));
+            other.dyna.~unique_ptr<std::bitset<word_size>[]>();
         }
         numbits = other.numbits;
         other.sdo = 0;
@@ -81,8 +81,10 @@ public:
     }
 
     ~dynamic_bitset() {
-        if (numbits != word_size) {
-            dyna.~unique_ptr<bitset<word_size>[]>();
+        if (numbits == word_size) {
+            sdo.~bitset<word_size>();
+        } else {
+            dyna.~unique_ptr<std::bitset<word_size>[]>();
         }
     }
 
@@ -94,14 +96,14 @@ public:
         if (ns > numbits) {
             auto count = (ns + word_size - 1u) / word_size;
             auto newlen = count * word_size;
-            auto newptr = make_unique<bitset<word_size>[]>(count);
+            auto newptr = std::make_unique<std::bitset<word_size>[]>(count);
             if (numbits == word_size) {
                 newptr[0] = sdo;
             } else {
                 copy(dyna.get(), dyna.get() + (numbits / word_size), newptr.get());
-                fill(newptr.get() + (numbits / word_size), newptr.get() + (newlen / word_size), 0);
+                std::fill(newptr.get() + (numbits / word_size), newptr.get() + (newlen / word_size), 0);
             }
-            dyna = move(newptr);
+            dyna = std::move(newptr);
             numbits = newlen;
         }
     }
@@ -136,14 +138,14 @@ public:
         if (numbits == word_size) {
             sdo = 0;
         } else {
-            fill(dyna.get(), dyna.get() + numbits / word_size, 0);
+            std::fill(dyna.get(), dyna.get() + numbits / word_size, 0);
         }
     }
 
 private:
     union {
-        bitset<word_size> sdo;
-        unique_ptr<bitset<word_size>[]> dyna;
+        std::bitset<word_size> sdo;
+        std::unique_ptr<std::bitset<word_size>[]> dyna;
     };
     size_type numbits;
 };
@@ -571,11 +573,11 @@ template <typename DB, typename T, bool Positive, typename... Ts>
 struct find_other;
 
 template <typename DB, typename T, typename... Ts>
-using find_other_t = typename find_other<DB, T, is_base_of<component_tags::positive, typename component_traits<DB, first_t<Ts...>>::category>::value, Ts...>::type;
+using find_other_t = typename find_other<DB, T, std::is_base_of<component_tags::positive, typename component_traits<DB, first_t<Ts...>>::category>::value, Ts...>::type;
 
 template <typename DB, typename T, typename U, typename... Ts>
 struct find_other<DB, T, true, U, Ts...> {
-    using type = true_type;
+    using type = std::true_type;
 };
 
 template <typename DB, typename T, typename... Ts>
@@ -590,12 +592,12 @@ struct find_other<DB, T, false, U, Ts...> {
 
 template <typename DB, typename T, typename U>
 struct find_other<DB, T, false, U> {
-    using type = false_type;
+    using type = std::false_type;
 };
 
 template <typename DB, typename T>
 struct find_other<DB, T, true, T> {
-    using type = false_type;
+    using type = std::false_type;
 };
 
 template <typename DB, typename T>
@@ -623,7 +625,7 @@ struct visitor_traits_impl {
 };
 
 template <typename DB, typename Visitor>
-struct visitor_traits : visitor_traits<DB, decltype(&decay_t<Visitor>::operator())> {};
+struct visitor_traits : visitor_traits<DB, decltype(&std::decay_t<Visitor>::operator())> {};
 
 template <typename DB, typename R, typename... Ts>
 struct visitor_traits<DB, R (&)(Ts...)> : visitor_traits_impl<DB, std::decay_t<Ts>...> {};
@@ -668,7 +670,7 @@ public:
 
         entid_to_comid[entid] = comid;
         comid_to_entid.push_back(entid);
-        components.push_back(move(com));
+        components.push_back(std::move(com));
     }
 
     virtual void remove(size_type entid) override final {
@@ -681,7 +683,7 @@ public:
         comid_to_entid[comid] = comid_to_entid[last];
         comid_to_entid.pop_back();
 
-        components[comid] = move(components[last]);
+        components[comid] = std::move(components[last]);
         components.pop_back();
     }
 
@@ -702,9 +704,9 @@ public:
     }
 
 private:
-    vector<size_type> entid_to_comid;
-    vector<size_type> comid_to_entid;
-    vector<T> components;
+    std::vector<size_type> entid_to_comid;
+    std::vector<size_type> comid_to_entid;
+    std::vector<T> components;
 };
 
 template <typename T>
@@ -729,11 +731,11 @@ public:
 
     /*! Entity ID.
      */
-    using ent_id = size_t;
+    using ent_id = std::size_t;
 
     /*! Component ID.
      */
-    using com_id = size_t;
+    using com_id = std::size_t;
 
     // Entity functions
 
@@ -798,9 +800,9 @@ public:
 
         if (guid < ent_coms.size() && ent_coms.get(guid)) {
             auto cid = com_set.get_comid(eid);
-            com_set.get_com(cid) = forward<T>(com);
+            com_set.get_com(cid) = std::forward<T>(com);
         } else {
-            com_set.assign(eid, forward<T>(com));
+            com_set.assign(eid, std::forward<T>(com));
             ent_coms.set(guid);
         }
     }
@@ -910,7 +912,7 @@ public:
         using tratis = visitor_traits<database, Visitor>;
         using primary_component = typename tratis::primary_component;
 
-        return visit_helper(forward<Visitor>(visitor), primary_component{});
+        return visit_helper( std::forward<Visitor>(visitor), primary_component{});
     }
 
     // status functions
@@ -949,7 +951,7 @@ private:
         }
         auto& com_set = component_sets[guid];
         if (!com_set) {
-            com_set = make_unique<component_set_impl<Com>>();
+            com_set = std::make_unique<component_set_impl<Com>>();
         }
         auto com_set_impl = static_cast<component_set_impl<Com>*>(com_set.get());
         return *com_set_impl;
@@ -960,11 +962,11 @@ private:
         using traits = visitor_traits<database, Visitor>;
         using has_other_components = typename traits::has_other_components;
 
-        return visit_helper_primary(forward<Visitor>(visitor), primary<Component>{}, has_other_components{});
+        return visit_helper_primary( std::forward<Visitor>(visitor), primary<Component>{}, has_other_components{});
     }
 
     template <typename Visitor, typename Component>
-    void visit_helper_primary(Visitor&& visitor, primary<Component>, true_type) {
+    void visit_helper_primary(Visitor&& visitor, primary<Component>, std::true_type) {
         using traits = visitor_traits<database, Visitor>;
         using key = typename traits::key;
 
@@ -981,7 +983,7 @@ private:
     }
 
     template <typename Visitor, typename Component>
-    void visit_helper_primary(Visitor&& visitor, primary<Component>, false_type) {
+    void visit_helper_primary(Visitor&& visitor, primary<Component>, std::false_type) {
         using traits = visitor_traits<database, Visitor>;
 
         if (auto com_set_ptr = get_com_set<Component>()) {
@@ -1008,9 +1010,9 @@ private:
         }
     }
 
-    vector<entity> entities;
-    vector<ent_id> free_entities;
-    vector<unique_ptr<component_set>> component_sets;
+    std::vector<entity> entities;
+    std::vector<ent_id> free_entities;
+    std::vector<std::unique_ptr<component_set>> component_sets;
 };
 
 } // namespace _detail
