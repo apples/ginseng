@@ -167,21 +167,12 @@ struct entity {
     dynamic_bitset components = {};
 };
 
+// False Type
+
+template <typename T>
+struct false_t : std::false_type {};
+
 // Queries
-
-/*! Has component
- *
- * When used as a visitor parameter, applies the matching logic for the parameter, but does not load the component.
- */
-template <typename T>
-struct require {};
-
-/*! Visitor parameter inverter
- *
- * When used as a visitor parameter, inverts the matching logic for that parameter.
- */
-template <typename T>
-struct deny {};
 
 /*! Tag component
  *
@@ -190,9 +181,23 @@ struct deny {};
 template <typename T>
 struct tag {};
 
+/*! Require component
+ *
+ * When used as a visitor parameter, applies the matching logic for the parameter, but does not load the component.
+ */
+template <typename T>
+struct require {};
+
+/*! Deny component
+ *
+ * When used as a visitor parameter, entities that have the component will fail to match.
+ */
+template <typename T>
+struct deny {};
+
 /*! Optional component
  *
- * When used as a visitor parameter, applies the matching logic for the parameter, but does not cause the visit to fail.
+ * When used as a visitor parameter, loads the component if it exists, and does not cause matching to fail.
  *
  * Provides pointer-like access to the parameter.
  */
@@ -230,7 +235,7 @@ private:
 
 /*! Optional Tag component
  *
- * When used as a visitor parameter, applies the matching logic for the parameter, but does not cause the visit to fail.
+ * When used as a visitor parameter, checks if the tag exists, but does not cause matching to fail.
  */
 template <typename T>
 class optional<tag<T>> {
@@ -253,6 +258,24 @@ private:
     optional(bool t)
         : tag(t) {}
     bool tag;
+};
+
+template <typename T>
+class optional<require<T>> {
+public:
+    static_assert(false_t<T>::value, "Optional require parameters not allowed.");
+};
+
+template <typename T>
+class optional<deny<T>> {
+public:
+    static_assert(false_t<T>::value, "Optional deny parameters not allowed.");
+};
+
+template <typename T>
+class optional<optional<T>> {
+public:
+    static_assert(false_t<T>::value, "Optional optional parameters not allowed.");
 };
 
 // Component Tags
@@ -675,13 +698,11 @@ public:
      */
     using com_id = std::size_t;
 
-    // Entity functions
-
     /*! Creates a new Entity.
      *
      * Creates a new Entity that has no components.
      *
-     * @return EntID of the new Entity.
+     * @return ID of the new Entity.
      */
     ent_id create_entity() {
         ent_id eid;
@@ -703,7 +724,7 @@ public:
      *
      * Destroys the given Entity and all associated components.
      *
-     * @param eid EntID of the Entity to erase.
+     * @param eid ID of the Entity to erase.
      */
     void destroy_entity(ent_id eid) {
         for (dynamic_bitset::size_type i = 1; i < entities[eid].components.size(); ++i) {
@@ -715,8 +736,6 @@ public:
         entities[eid].components.zero();
         free_entities.push_back(eid);
     }
-
-    // Component functions
 
     /*! Create new component.
      *
@@ -762,6 +781,15 @@ public:
         ent_coms.set(guid);
     }
 
+    template <typename T>
+    void create_component(ent_id eid, require<T> com) = delete;
+
+    template <typename T>
+    void create_component(ent_id eid, deny<T> com) = delete;
+
+    template <typename T>
+    void create_component(ent_id eid, optional<T> com) = delete;
+
     /*! Destroy a component.
      *
      * Destroys the given component and disassociates it from its Entity.
@@ -772,7 +800,7 @@ public:
      *
      * @tparam Com Type of the component to erase.
      *
-     * @param eid EntID of the entity.
+     * @param eid ID of the entity.
      */
     template <typename Com>
     void destroy_component(ent_id eid) {
@@ -793,7 +821,7 @@ public:
      *
      * @tparam Com Type of the component to get.
      *
-     * @param eid EntID of the entity.
+     * @param eid ID of the entity.
      * @return Reference to the component.
      */
     template <typename Com>
@@ -810,7 +838,7 @@ public:
      *
      * @tparam Com Type of the component to check.
      *
-     * @param eid EntID of the entity.
+     * @param eid ID of the entity.
      * @return True if the component exists.
      */
     template <typename Com>
@@ -828,13 +856,13 @@ public:
      *
      * - Component Data: Any `T` except rvalue-references, matches entities that have component `T`.
      * - Component Tag: `tag<T>` value, matches entities that have component `tag<T>`.
-     * - Component Require: `require<T>` value, matches entities that have component `T`, but does not load the component.
-     * - Component Optional: `optional<T>` value, checks if a component exists, and provides a way to access it, does not fail.
+     * - Component Require: `require<T>` value, matches entities that have component `T`, but does not load it.
+     * - Component Optional: `optional<T>` value, checks if a component exists, and loads it, does not fail.
      * - Inverted: `deny<T>` value, matches entities that do *not* match component `T`.
-     * - EntID: Matches all entities, provides the `ent_id` of the current entity.
+     * - Entity ID: `ent_id`, matches all entities, provides the `ent_id` of the current entity.
      *
-     * Component Data and Maybe parameters will refer to the entity's matching component.
-     * EntID parameters will contain the entity's EntID.
+     * Component Data and Optional parameters will refer to the entity's matching component.
+     * Entity ID parameters will contain the entity's EntID.
      * Other parameters will be their default value.
      *
      * Entities that do not match all given parameter conditions will be skipped.
@@ -853,8 +881,6 @@ public:
 
         return visit_helper( std::forward<Visitor>(visitor), primary_component{});
     }
-
-    // status functions
 
     /*! Get the number of entities in the Database.
      *
