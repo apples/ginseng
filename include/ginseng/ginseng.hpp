@@ -527,46 +527,10 @@ struct database_traits {
 
     template <typename PrimaryComponent>
     struct visitor_key<primary<PrimaryComponent>> {
-        static bool check(DB&, ent_id) {
+        static bool check(DB& db, ent_id eid) {
             return true;
         }
     };
-
-    // FindOther
-
-    template <typename T, bool Positive, typename... Ts>
-    struct find_other;
-
-    template <typename T, typename... Ts>
-    using find_other_t = typename find_other<T, std::is_base_of<component_tags::positive, typename component_traits<first_t<Ts...>>::category>::value, Ts...>::type;
-
-    template <typename T, typename U, typename... Ts>
-    struct find_other<primary<T>, true, U, Ts...> {
-        using type = std::true_type;
-    };
-
-    template <typename T, typename... Ts>
-    struct find_other<primary<T>, true, T, Ts...> {
-        using type = find_other_t<primary<T>, Ts...>;
-    };
-
-    template <typename T, typename U, typename... Ts>
-    struct find_other<primary<T>, false, U, Ts...> {
-        using type = find_other_t<primary<T>, Ts...>;
-    };
-
-    template <typename T, typename U>
-    struct find_other<primary<T>, false, U> {
-        using type = std::false_type;
-    };
-
-    template <typename T>
-    struct find_other<primary<T>, true, T> {
-        using type = std::false_type;
-    };
-
-    template <typename T>
-    struct find_other<primary<T>, false, T> {};
 
     // VisitorTraits
 
@@ -575,7 +539,6 @@ struct database_traits {
         using ent_id = typename DB::ent_id;
         using com_id = typename DB::com_id;
         using primary_component = get_primary_t<Components...>;
-        using has_other_components = find_other_t<primary_component, Components...>;
         using key = visitor_key<primary_component, Components...>;
 
         template <typename Visitor>
@@ -927,15 +890,6 @@ private:
     void visit_helper(Visitor&& visitor, primary<Component>) {
         using db_traits = database_traits<database>;
         using traits = typename db_traits::visitor_traits<Visitor>;
-        using has_other_components = typename traits::has_other_components;
-
-        return visit_helper_primary( std::forward<Visitor>(visitor), primary<Component>{}, has_other_components{});
-    }
-
-    template <typename Visitor, typename Component>
-    void visit_helper_primary(Visitor&& visitor, primary<Component>, std::true_type) {
-        using db_traits = database_traits<database>;
-        using traits = typename db_traits::visitor_traits<Visitor>;
         using key = typename traits::key;
 
         if (auto com_set_ptr = get_com_set<Component>()) {
@@ -950,23 +904,6 @@ private:
         }
     }
 
-    template <typename Visitor, typename Component>
-    void visit_helper_primary(Visitor&& visitor, primary<Component>, std::false_type) {
-        using db_traits = database_traits<database>;
-        using traits = typename db_traits::visitor_traits<Visitor>;
-
-        if (auto com_set_ptr = get_com_set<Component>()) {
-            auto& com_set = *com_set_ptr;
-
-            for (com_id cid = 0; cid < com_set.size(); ++cid) {
-                auto eid = com_set.get_entid(cid);
-                if (entities[eid].components.get(0)) {
-                    traits::apply(*this, eid, cid, visitor);
-                }
-            }
-        }
-    }
-
     template <typename Visitor>
     void visit_helper(Visitor&& visitor, primary<void>) {
         using db_traits = database_traits<database>;
@@ -974,7 +911,7 @@ private:
         using key = typename traits::key;
 
         for (auto eid = 0; eid < entities.size(); ++eid) {
-            if (key::check(*this, eid)) {
+            if (entities[eid].components.get(0) && key::check(*this, eid)) {
                 traits::apply(*this, eid, {}, visitor);
             }
         }

@@ -188,3 +188,40 @@ TEST_CASE("optional can be used instead of components", "[ginseng]")
     REQUIRE(bool(mdata2) == false);
 }
 
+TEST_CASE("deleted entites are not revisited", "[ginseng]")
+{
+    DB db;
+
+    struct Data {};
+
+    auto ent = db.create_entity();
+    db.create_entity();
+    db.create_entity();
+
+    int visited = 0;
+    db.visit([&](ent_id eid){
+        ++visited;
+        db.create_component(eid, Data{});
+    });
+    REQUIRE(visited == 3);
+
+    visited = 0;
+    db.visit([&](ent_id eid, Data&){
+        ++visited;
+    });
+    REQUIRE(visited == 3);
+
+    db.destroy_entity(ent);
+
+    visited = 0;
+    db.visit([&](ent_id eid){
+        ++visited;
+    });
+    REQUIRE(visited == 2);
+
+    visited = 0;
+    db.visit([&](ent_id eid, Data&){
+        ++visited;
+    });
+    REQUIRE(visited == 2);
+}
