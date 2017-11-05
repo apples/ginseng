@@ -58,11 +58,15 @@ TEST_CASE("Components can be added, accessed, and removed from entities", "[gins
     REQUIRE(db.get_component<ComB>(ent).y == 4.2);
 
     db.destroy_component<ComA>(ent);
+    REQUIRE(db.has_component<ComA>(ent) == false);
+    REQUIRE(db.has_component<ComB>(ent) == true);
 
     REQUIRE(&db.get_component<ComB>(ent) == com2ptr1);
     REQUIRE(db.get_component<ComB>(ent).y == 4.2);
 
     db.destroy_component<ComB>(ent);
+    REQUIRE(db.has_component<ComA>(ent) == false);
+    REQUIRE(db.has_component<ComB>(ent) == false);
 }
 
 TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
