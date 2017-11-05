@@ -206,6 +206,8 @@ class optional {
 public:
     optional()
         : com(nullptr) {}
+    explicit optional(T* c)
+        : com(c) {}
     optional(const optional&) = default;
     optional(optional&&) = default;
     optional& operator=(const optional&) = default;
@@ -224,12 +226,6 @@ public:
     }
 
 private:
-    template <typename DB>
-    template <typename Traits>
-    friend struct database_traits<DB>::applier_helper;
-
-    optional(T* c)
-        : com(c) {}
     T* com;
 };
 
@@ -242,6 +238,8 @@ class optional<tag<T>> {
 public:
     optional()
         : tag(false) {}
+    explicit optional(bool t)
+        : tag(t) {}
     optional(const optional&) = default;
     optional(optional&&) = default;
     optional& operator=(const optional&) = default;
@@ -251,12 +249,6 @@ public:
     }
 
 private:
-    template <typename DB>
-    template <typename Traits>
-    friend struct database_traits<DB>::applier_helper;
-
-    optional(bool t)
-        : tag(t) {}
     bool tag;
 };
 
@@ -585,7 +577,7 @@ class component_set_impl final : public component_set {
 public:
     virtual ~component_set_impl() = default;
 
-    void assign(size_type entid, T com) {
+    size_type assign(size_type entid, T com) {
         if (entid >= entid_to_comid.size()) {
             entid_to_comid.resize(entid + 1, -1);
         }
@@ -595,6 +587,8 @@ public:
         entid_to_comid[entid] = comid;
         comid_to_entid.push_back(entid);
         components.push_back(std::move(com));
+
+        return comid;
     }
 
     virtual void remove(size_type entid) override final {
@@ -640,6 +634,31 @@ public:
     virtual void remove(size_type entid) override final {}
 };
 
+// Opaque index
+
+template <typename Tag, typename Friend, typename Index>
+class opaque_index {
+public:
+    opaque_index() = default;
+
+private:
+    friend Friend;
+
+    opaque_index(Index i)
+        : index(i) {}
+
+    operator Index() const {
+        return index;
+    }
+
+    opaque_index& operator++() {
+        ++index;
+        return *this;
+    }
+
+    Index index;
+};
+
 /*! Database
  *
  * An Entity component Database. Uses the given allocator to allocate
@@ -655,11 +674,11 @@ public:
 
     /*! Entity ID.
      */
-    using ent_id = std::size_t;
+    using ent_id = opaque_index<struct ent_id_tag, database, std::vector<entity>::size_type>;
 
     /*! Component ID.
      */
-    using com_id = std::size_t;
+    using com_id = opaque_index<struct com_id_tag, database, component_set::size_type>;
 
     /*! Creates a new Entity.
      *
@@ -709,22 +728,25 @@ public:
      *
      * @param eid Entity to attach new component to.
      * @param com Component value.
+     * @return ID of component.
      */
     template <typename T>
-    void create_component(ent_id eid, T&& com) {
+    com_id create_component(ent_id eid, T&& com) {
         auto guid = get_type_guid<T>();
-
         auto& ent_coms = entities[eid].components;
-
         auto& com_set = get_or_create_com_set<T>();
 
+        com_id cid;
+
         if (guid < ent_coms.size() && ent_coms.get(guid)) {
-            auto cid = com_set.get_comid(eid);
+            cid = com_set.get_comid(eid);
             com_set.get_com(cid) = std::forward<T>(com);
         } else {
-            com_set.assign(eid, std::forward<T>(com));
+            cid = com_set.assign(eid, std::forward<T>(com));
             ent_coms.set(guid);
         }
+
+        return cid;
     }
 
     /*! Create new Tag component.
@@ -794,6 +816,24 @@ public:
         return com_set.get_com(cid);
     }
 
+    /*! Get a component by its ID.
+     *
+     * Gets a reference to the component of the given type that has the given ID.
+     *
+     * @warning
+     * Behavior is undefined when no component is associated with the given ID.
+     *
+     * @tparam Com Type of the component to get.
+     *
+     * @param cid ID of the component.
+     * @return Reference to the component.
+     */
+    template <typename Com>
+    Com& get_component_by_id(com_id cid) {
+        auto& com_set = *get_com_set<Com>();
+        return com_set.get_com(cid);
+    }
+
     /*! Checks if an entity has a component.
      *
      * Returns whether or not the entity has a component of the
@@ -854,16 +894,6 @@ public:
     }
 
 private:
-    template <typename DB>
-    template <typename PrimaryComponent, typename... Components>
-    friend struct database_traits<DB>::applier;
-
-    template <typename Com>
-    Com& get_component_by_id(com_id cid) {
-        auto& com_set = *get_com_set<Com>();
-        return com_set.get_com(cid);
-    }
-
     template <typename Com>
     component_set_impl<Com>* get_com_set() {
         auto guid = get_type_guid<Com>();
