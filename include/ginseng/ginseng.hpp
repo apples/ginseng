@@ -527,7 +527,7 @@ struct database_traits {
 
     template <typename PrimaryComponent>
     struct visitor_key<primary<PrimaryComponent>> {
-        static bool check(DB& db, ent_id eid) {
+        static bool check(DB&, ent_id) {
             return true;
         }
     };
