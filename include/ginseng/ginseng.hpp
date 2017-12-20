@@ -641,6 +641,10 @@ class opaque_index {
 public:
     opaque_index() = default;
 
+    bool operator==(const opaque_index& other) {
+        return index == other.index;
+    }
+
 private:
     friend Friend;
 
@@ -732,9 +736,10 @@ public:
      */
     template <typename T>
     com_id create_component(ent_id eid, T&& com) {
-        auto guid = get_type_guid<T>();
+        using com_type = std::decay_t<T>;
+        auto guid = get_type_guid<com_type>();
         auto& ent_coms = entities[eid].components;
-        auto& com_set = get_or_create_com_set<T>();
+        auto& com_set = get_or_create_com_set<com_type>();
 
         com_id cid;
 
@@ -897,6 +902,9 @@ private:
     template <typename Com>
     component_set_impl<Com>* get_com_set() {
         auto guid = get_type_guid<Com>();
+        if (guid >= component_sets.size()) {
+            return nullptr;
+        }
         auto& com_set = component_sets[guid];
         auto com_set_impl = static_cast<component_set_impl<Com>*>(com_set.get());
         return com_set_impl;
