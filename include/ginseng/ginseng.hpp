@@ -386,66 +386,63 @@ struct database_traits {
         using component = typename Traits::component;
 
         template <typename Visitor>
-        static void dispatch(component_tags::normal, DB& db, ent_id eid, Visitor&& visitor) {
+        static auto dispatch(component_tags::normal, DB& db, ent_id eid, Visitor&& visitor) {
             auto& com = db.template get_component<component>(eid);
-            visitor(com);
+            return visitor(com);
         }
 
         template <typename Visitor>
-        static void dispatch(component_tags::noload, DB& db, ent_id eid, Visitor&& visitor) {
-            if (db.template has_component<component>(eid)) {
-                visitor(require<component>{});
-            }
+        static auto dispatch(component_tags::noload, DB& db, ent_id eid, Visitor&& visitor) {
+            return visitor(require<component>{});
         }
 
         template <typename Visitor>
-        static void dispatch(component_tags::inverted, DB& db, ent_id eid, Visitor&& visitor) {
+        static auto dispatch(component_tags::inverted, DB& db, ent_id eid, Visitor&& visitor) {
             using inner_traits = component_traits<component>;
-            inverted_helper(typename inner_traits::category{}, db, eid, std::forward<Visitor>(visitor));
+            return inverted_helper(typename inner_traits::category{}, db, eid, std::forward<Visitor>(visitor));
         }
 
         template <typename Visitor>
-        static void inverted_helper(component_tags::positive, DB& db, ent_id eid, Visitor&& visitor) {
-            if (!db.template has_component<component>(eid)) {
-                visitor(deny<component>{});
-            }
+        static auto inverted_helper(component_tags::positive, DB& db, ent_id eid, Visitor&& visitor) {
+            return visitor(deny<component>{});
         }
 
         template <typename Visitor>
-        static void dispatch(component_tags::tagged, DB& db, ent_id eid, Visitor&& visitor) {
-            if (db.template has_component<component>(eid)) {
-                visitor(component{});
-            }
+        static auto inverted_helper(component_tags::meta, DB& db, ent_id eid, Visitor&& visitor) = delete;
+
+        template <typename Visitor>
+        static auto dispatch(component_tags::tagged, DB& db, ent_id eid, Visitor&& visitor) {
+            return visitor(component{});
         }
 
         template <typename Visitor>
-        static void dispatch(component_tags::nofail, DB& db, ent_id eid, Visitor&& visitor) {
+        static auto dispatch(component_tags::nofail, DB& db, ent_id eid, Visitor&& visitor) {
             using InnerTraits = component_traits<component>;
-            nofail_helper(typename InnerTraits::category{}, db, eid, std::forward<Visitor>(visitor));
+            return nofail_helper(typename InnerTraits::category{}, db, eid, std::forward<Visitor>(visitor));
         }
 
         template <typename Visitor>
-        static void nofail_helper(component_tags::normal, DB& db, ent_id eid, Visitor&& visitor) {
+        static auto nofail_helper(component_tags::normal, DB& db, ent_id eid, Visitor&& visitor) {
             if (db.template has_component<component>(eid)) {
                 auto& com = db.template get_component<component>(eid);
-                visitor(optional<component>(&com));
+                return visitor(optional<component>(&com));
             } else {
-                visitor(optional<component>(nullptr));
+                return visitor(optional<component>(nullptr));
             }
         }
 
         template <typename Visitor>
-        static void nofail_helper(component_tags::tagged, DB& db, ent_id eid, Visitor&& visitor) {
+        static auto nofail_helper(component_tags::tagged, DB& db, ent_id eid, Visitor&& visitor) {
             if (db.template has_component<component>(eid)) {
-                visitor(optional<component>(true));
+                return visitor(optional<component>(true));
             } else {
-                visitor(optional<component>(false));
+                return visitor(optional<component>(false));
             }
         }
 
         template <typename Visitor>
-        static void dispatch(component_tags::eid, DB& db, ent_id eid, Visitor&& visitor) {
-            visitor(eid);
+        static auto dispatch(component_tags::eid, DB& db, ent_id eid, Visitor&& visitor) {
+            return visitor(eid);
         }
     };
 
@@ -457,10 +454,10 @@ struct database_traits {
         using next_applier = applier<primary<PrimaryComponent>, TailComs...>;
 
         template <typename Visitor, typename... Args>
-        static void try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
+        static auto try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
             using Traits = component_traits<HeadCom>;
-            applier_helper<Traits>::dispatch(typename Traits::category{}, db, eid, [&](auto&& new_arg){
-                next_applier::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., std::forward<decltype(new_arg)>(new_arg));
+            return applier_helper<Traits>::dispatch(typename Traits::category{}, db, eid, [&](auto&& new_arg){
+                return next_applier::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., std::forward<decltype(new_arg)>(new_arg));
             });
         }
     };
@@ -470,18 +467,18 @@ struct database_traits {
         using next_applier = applier<primary<PrimaryComponent>, TailComs...>;
 
         template <typename Visitor, typename... Args>
-        static void try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
+        static auto try_apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, Args&&... args) {
             using Traits = component_traits<PrimaryComponent>;
             auto& com = db.template get_component_by_id<typename Traits::component>(primary_cid);
-            next_applier::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
+            return next_applier::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor), std::forward<Args>(args)..., com);
         }
     };
 
     template <typename PrimaryComponent>
     struct applier<primary<PrimaryComponent>> {
         template <typename Visitor, typename... Args>
-        static void try_apply(DB&, ent_id, com_id, Visitor&& visitor, Args&&... args) {
-            std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
+        static auto try_apply(DB&, ent_id, com_id, Visitor&& visitor, Args&&... args) {
+            return std::forward<Visitor>(visitor)(std::forward<Args>(args)...);
         }
     };
 
@@ -497,6 +494,11 @@ struct database_traits {
 
         static bool helper(DB& db, ent_id eid, component_tags::positive) {
             return next_key::check(db, eid) && db.template has_component<typename traits::component>(eid);
+        }
+
+        static bool helper(DB& db, ent_id eid, component_tags::inverted) {
+            using inverted_key = visitor_key<primary<PrimaryComponent>, typename traits::component>;
+            return next_key::check(db, eid) && !inverted_key::check(db, eid);
         }
 
         static bool helper(DB& db, ent_id eid, component_tags::meta) {
@@ -534,8 +536,13 @@ struct database_traits {
         using key = visitor_key<primary_component, Components...>;
 
         template <typename Visitor>
-        static void apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor) {
-            applier<primary_component, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
+        static auto apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor) {
+            return applier<primary_component, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
+        }
+
+        template <typename Visitor>
+        static auto apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, primary<void>) {
+            return applier<primary<void>, Components...>::try_apply(db, eid, primary_cid, std::forward<Visitor>(visitor));
         }
     };
 
@@ -643,6 +650,10 @@ public:
 
     bool operator==(const opaque_index& other) {
         return index == other.index;
+    }
+
+    Index get_index() const {
+        return index;
     }
 
 private:
@@ -890,12 +901,36 @@ public:
         return visit_helper( std::forward<Visitor>(visitor), primary_component{});
     }
 
+    template <typename Visitor>
+    void visit_pairs(Visitor&& visitor) {
+        using db_traits = database_traits<database>;
+        using traits = typename db_traits::visitor_traits<Visitor>;
+        using key = typename traits::key;
+
+        for (auto eid = 0; eid < entities.size(); ++eid) {
+            if (entities[eid].components.get(0) && key::check(*this, eid)) {
+                auto inner_visitor = traits::apply(*this, eid, {}, visitor, primary<void>{});
+                using inner_traits = typename db_traits::visitor_traits<decltype(inner_visitor)>;
+                using inner_key = typename inner_traits::key;
+                for (auto inner_eid = eid + 1; inner_eid < entities.size(); ++inner_eid) {
+                    if (entities[inner_eid].components.get(0) && inner_key::check(*this, inner_eid)) {
+                        inner_traits::apply(*this, inner_eid, {}, inner_visitor, primary<void>{});
+                    }
+                }
+            }
+        }
+    }
+
     /*! Get the number of entities in the Database.
      *
      * @return Number of entities in the Database.
      */
     auto size() const {
         return entities.size() - free_entities.size();
+    }
+
+    bool exists(ent_id eid) const {
+        return entities[eid].components.get(0);
     }
 
 private:
