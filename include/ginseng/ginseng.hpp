@@ -13,11 +13,6 @@ namespace ginseng {
 
 namespace _detail {
 
-// Forward Declarations
-
-template <typename DB>
-struct database_traits;
-
 // Type Guid
 
 using type_guid = std::size_t;
@@ -280,7 +275,7 @@ struct normal : positive {};
 struct noload : positive, unit {};
 struct tagged : positive, unit {};
 struct meta {};
-struct nofail : meta {};
+struct optional : meta {};
 struct eid : meta {};
 struct inverted : noload {};
 
@@ -308,7 +303,7 @@ struct component_traits<DB, tag<Component>> {
 
 template <typename DB, typename Component>
 struct component_traits<DB, optional<Component>> {
-    using category = component_tags::nofail;
+    using category = component_tags::optional;
     using component = Component;
 };
 
@@ -341,6 +336,33 @@ struct primary {
     using type = T;
 };
 
+// GetPrimary
+
+template <typename DB, typename... Components>
+struct get_primary;
+
+template <typename DB, typename... Components>
+using get_primary_t = typename get_primary<DB, Components...>::type;
+
+template <typename DB, typename HeadCom, typename... Components>
+struct get_primary<DB, HeadCom, Components...> {
+    static constexpr auto get() {
+        using category = typename component_traits<DB, HeadCom>::category;
+        if constexpr (std::is_same_v<category, component_tags::normal>) {
+            return primary<HeadCom>{};
+        } else {
+            return get_primary_t<DB, Components...>{};
+        }
+    }
+
+    using type = decltype(get());
+};
+
+template <typename DB>
+struct get_primary<DB> {
+    using type = primary<void>;
+};
+
 // Database Traits
 
 template <typename DB>
@@ -352,33 +374,8 @@ struct database_traits {
     template <typename C>
     using component_traits = component_traits<DB, C>;
 
-    // GetPrimary
-
-    template <typename HeadTag, typename... Components>
-    struct get_primary;
-
     template <typename... Components>
-    using get_primary_t = typename get_primary<typename component_traits<first_t<Components...>>::category, Components...>::type;
-
-    template <typename HeadTag, typename HeadCom, typename... Components>
-    struct get_primary<HeadTag, HeadCom, Components...> {
-        using type = get_primary_t<Components...>;
-    };
-
-    template <typename HeadTag, typename HeadCom>
-    struct get_primary<HeadTag, HeadCom> {
-        using type = primary<void>;
-    };
-
-    template <typename HeadCom, typename... Components>
-    struct get_primary<component_tags::normal, HeadCom, Components...> {
-        using type = primary<HeadCom>;
-    };
-
-    template <typename HeadCom>
-    struct get_primary<component_tags::normal, HeadCom> {
-        using type = primary<HeadCom>;
-    };
+    using get_primary_t = get_primary_t<DB, Components...>;
 
     // VisitorKey
 
@@ -436,16 +433,16 @@ struct database_traits {
         }
 
         template <typename Com, typename Primary>
-        static Com get_com(component_tags::nofail, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
+        static Com get_com(component_tags::optional, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
             using traits = component_traits<Com>;
             using inner_component = typename traits::component;
             using inner_traits = component_traits<inner_component>;
             using inner_category = typename inner_traits::category;
-            return get_com_nofail<inner_component>(db, eid, primary_cid, primary<Primary>{}, inner_category{});
+            return get_com_optional<inner_component>(db, eid, primary_cid, primary<Primary>{}, inner_category{});
         }
 
         template <typename Com, typename Primary>
-        static optional<Com> get_com_nofail(component_tags::normal, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
+        static optional<Com> get_com_optional(component_tags::normal, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
             if constexpr (std::is_same_v<Com, Primary>) {
                 return db.template get_component_by_id<Com>(primary_cid);
             } else {
@@ -458,7 +455,7 @@ struct database_traits {
         }
 
         template <typename Com, typename Primary>
-        static optional<Com> get_com_nofail(component_tags::tagged, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
+        static optional<Com> get_com_optional(component_tags::tagged, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
             (void)primary_cid;
             return db.template has_component<Com>(eid);
         }
