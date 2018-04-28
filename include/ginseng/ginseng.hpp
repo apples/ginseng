@@ -382,45 +382,38 @@ struct database_traits {
 
     // VisitorKey
 
-    template <typename PrimaryComponent, typename... Components>
+    template <typename Primary, typename... Coms>
     struct visitor_key;
 
-    template <typename PrimaryComponent, typename HeadCom, typename... TailComs>
-    struct visitor_key<primary<PrimaryComponent>, HeadCom, TailComs...> {
-        using traits = component_traits<HeadCom>;
-        using next_key = visitor_key<primary<PrimaryComponent>, TailComs...>;
-
-        static bool helper(DB& db, ent_id eid, component_tags::positive) {
-            return next_key::check(db, eid) && db.template has_component<typename traits::component>(eid);
+    template <typename Primary, typename... Coms>
+    struct visitor_key<primary<Primary>, Coms...> {
+        template <typename Com>
+        static bool check(DB& db, ent_id eid, component_tags::positive) {
+            using component = typename component_traits<Com>::component;
+            if constexpr (std::is_same_v<Primary, component>) {
+                return true;
+            } else {
+                return db.template has_component<component>(eid);
+            }
         }
 
-        static bool helper(DB& db, ent_id eid, component_tags::inverted) {
-            using inverted_key = visitor_key<primary<PrimaryComponent>, typename traits::component>;
-            return next_key::check(db, eid) && !inverted_key::check(db, eid);
+        template <typename Com>
+        static bool check(DB& db, ent_id eid, component_tags::inverted) {
+            using component = typename component_traits<Com>::component;
+            using inverted_key = visitor_key<primary<Primary>, component>;
+            return !inverted_key::check(db, eid);
         }
 
-        static bool helper(DB& db, ent_id eid, component_tags::meta) {
-            return next_key::check(db, eid);
-        }
-
-        static bool check(DB& db, ent_id eid) {
-            return helper(db, eid, typename traits::category{});
-        }
-    };
-
-    template <typename PrimaryComponent, typename... TailComs>
-    struct visitor_key<primary<PrimaryComponent>, PrimaryComponent, TailComs...> {
-        using next_key = visitor_key<primary<PrimaryComponent>, TailComs...>;
-
-        static bool check(DB& db, ent_id eid) {
-            return next_key::check(db, eid);
-        }
-    };
-
-    template <typename PrimaryComponent>
-    struct visitor_key<primary<PrimaryComponent>> {
-        static bool check(DB&, ent_id) {
+        template <typename Com>
+        static bool check(DB& db, ent_id eid, component_tags::meta) {
             return true;
+        }
+
+        template <typename Com>
+        using tag_t = typename component_traits<Com>::category;
+
+        static bool check(DB& db, ent_id eid) {
+            return (check<Coms>(db, eid, tag_t<Coms>{}) && ...);
         }
     };
 
