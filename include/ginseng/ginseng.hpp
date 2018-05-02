@@ -438,7 +438,7 @@ struct database_traits {
             using inner_component = typename traits::component;
             using inner_traits = component_traits<inner_component>;
             using inner_category = typename inner_traits::category;
-            return get_com_optional<inner_component>(db, eid, primary_cid, primary<Primary>{}, inner_category{});
+            return get_com_optional<inner_component>(inner_category{}, db, eid, primary_cid, primary<Primary>{});
         }
 
         template <typename Com, typename Primary>
@@ -457,7 +457,7 @@ struct database_traits {
         template <typename Com, typename Primary>
         static optional<Com> get_com_optional(component_tags::tagged, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
             (void)primary_cid;
-            return db.template has_component<Com>(eid);
+            return optional<Com>(db.template has_component<Com>(eid));
         }
 
         template <typename Com, typename Primary>
