@@ -841,27 +841,7 @@ public:
         using traits = typename db_traits::visitor_traits<Visitor>;
         using primary_component = typename traits::primary_component;
 
-        return visit_helper( std::forward<Visitor>(visitor), primary_component{});
-    }
-
-    template <typename Visitor>
-    void visit_pairs(Visitor&& visitor) {
-        using db_traits = database_traits<database>;
-        using traits = typename db_traits::visitor_traits<Visitor>;
-        using key = typename traits::key;
-
-        for (auto eid = 0; eid < entities.size(); ++eid) {
-            if (entities[eid].components.get(0) && key::check(*this, eid)) {
-                auto inner_visitor = traits::apply(*this, eid, {}, visitor, primary<void>{});
-                using inner_traits = typename db_traits::visitor_traits<decltype(inner_visitor)>;
-                using inner_key = typename inner_traits::key;
-                for (auto inner_eid = eid + 1; inner_eid < entities.size(); ++inner_eid) {
-                    if (entities[inner_eid].components.get(0) && inner_key::check(*this, inner_eid)) {
-                        inner_traits::apply(*this, inner_eid, {}, inner_visitor, primary<void>{});
-                    }
-                }
-            }
-        }
+        return visit_helper(std::forward<Visitor>(visitor), primary_component{});
     }
 
     /*! Get the number of entities in the Database.
@@ -870,10 +850,6 @@ public:
      */
     auto size() const {
         return entities.size() - free_entities.size();
-    }
-
-    bool exists(ent_id eid) const {
-        return entities[eid].components.get(0);
     }
 
 private:
