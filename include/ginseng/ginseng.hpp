@@ -525,34 +525,62 @@ inline component_set::~component_set() = default;
 template <typename T>
 class component_set_impl final : public component_set {
 public:
-    virtual ~component_set_impl() = default;
+    virtual ~component_set_impl() {
+        for (auto i = size_type{0}, sz = size(); i < sz; ++i) {
+            if (is_valid(i)) {
+                auto bucket = get_bucket_index(i);
+                auto rel_index = get_relative_index(bucket, i);
+                buckets[bucket][rel_index].component.~T();
+            }
+        }
+    }
 
     size_type assign(size_type entid, T com) {
         if (entid >= entid_to_comid.size()) {
-            entid_to_comid.resize(entid + 1, -1);
+            entid_to_comid.resize(entid + 1);
         }
 
-        auto comid = comid_to_entid.size();
+        auto index = free_head;
+        auto bucket = get_bucket_index(index);
+        auto rel_index = get_relative_index(bucket, index);
+        storage* slot;
 
-        entid_to_comid[entid] = comid;
-        comid_to_entid.push_back(entid);
-        components.push_back(std::move(com));
+        if (index == back_index) {
+            if (bucket == buckets.size()) {
+                auto bucket_size = get_bucket_size(bucket);
+                buckets.push_back(std::make_unique<storage[]>(bucket_size));
+                comid_to_entid.resize(comid_to_entid.size() + bucket_size, -1);
+            }
 
-        return comid;
+            slot = &buckets[bucket][rel_index];
+            ++back_index;
+            free_head = back_index;
+        } else {
+            slot = &buckets[bucket][rel_index];
+            free_head = slot->next_free;
+        }
+
+        new (&slot->component) T(std::move(com));
+        entid_to_comid[entid] = index;
+        comid_to_entid[index] = entid;
+
+        return index;
     }
 
     virtual void remove(size_type entid) override final {
-        auto last = comid_to_entid.size() - 1;
-        auto comid = entid_to_comid[entid];
+        auto index = entid_to_comid[entid];
+        auto bucket = get_bucket_index(index);
+        auto rel_index = get_relative_index(bucket, index);
+        auto& slot = buckets[bucket][rel_index];
 
-        entid_to_comid[entid] = -1;
-        entid_to_comid[comid_to_entid[last]] = comid;
+        slot.component.~T();
+        slot.next_free = free_head;
+        free_head = index;
+        comid_to_entid[index] = -1;
+    }
 
-        comid_to_entid[comid] = comid_to_entid[last];
-        comid_to_entid.pop_back();
-
-        components[comid] = std::move(components[last]);
-        components.pop_back();
+    bool is_valid(size_type comid) const {
+        return comid_to_entid[comid] != -1;
     }
 
     size_type get_comid(size_type entid) const {
@@ -560,7 +588,10 @@ public:
     }
 
     T& get_com(size_type comid) {
-        return components[comid];
+        auto bucket = get_bucket_index(comid);
+        auto rel_index = get_relative_index(bucket, comid);
+        auto& slot = buckets[bucket][rel_index];
+        return slot.component;
     }
 
     size_type get_entid(size_type comid) const {
@@ -568,13 +599,44 @@ public:
     }
 
     auto size() const {
-        return components.size();
+        return back_index;
     }
 
 private:
+    union storage {
+        size_type next_free;
+        T component;
+
+        storage() {}
+        ~storage() {}
+    };
+
     std::vector<size_type> entid_to_comid;
     std::vector<size_type> comid_to_entid;
-    std::vector<T> components;
+    std::vector<std::unique_ptr<storage[]>> buckets;
+    size_type free_head = 0;
+    size_type back_index = 0;
+
+    static constexpr size_type bucket_size = 32;
+
+    static size_type get_bucket_index(size_type idx) {
+        auto rv = size_type{0};
+        idx = idx / bucket_size + 1;
+        while (idx >>= 1) ++rv;
+        return rv;
+    }
+
+    static size_type get_relative_index(size_type bucket, size_type idx) {
+        return (idx / bucket_size + 1 - (size_type{1} << bucket)) * bucket_size + idx % bucket_size;
+    }
+
+    static size_type get_total_size(size_type num_buckets) {
+        return ((size_type{1} << num_buckets) - 1) * bucket_size;
+    }
+
+    static size_type get_bucket_size(size_type bucket) {
+        return (size_type{1} << bucket) * bucket_size;
+    }
 };
 
 template <typename T>
@@ -887,10 +949,12 @@ private:
         if (auto com_set_ptr = get_com_set<Component>()) {
             auto& com_set = *com_set_ptr;
 
-            for (com_id cid = 0; cid < com_set.size(); ++cid) {
-                auto eid = com_set.get_entid(cid);
-                if (key::check(*this, eid)) {
-                    traits::apply(*this, eid, cid, visitor);
+            for (com_id cid = 0, sz = com_set.size(); cid < sz; ++cid) {
+                if (com_set.is_valid(cid)) {
+                    auto eid = com_set.get_entid(cid);
+                    if (key::check(*this, eid)) {
+                        traits::apply(*this, eid, cid, visitor);
+                    }
                 }
             }
         }
