@@ -44,7 +44,7 @@ public:
     static constexpr size_type word_size = 64;
 
     using bitset = std::bitset<word_size>;
-    using bitset_array = std::unique_ptr<bitset[]>;
+    using bitset_array = bitset*;
 
     dynamic_bitset()
         : sdo(0), numbits(word_size) {}
@@ -52,43 +52,40 @@ public:
     dynamic_bitset(const dynamic_bitset&) = delete;
     dynamic_bitset& operator=(const dynamic_bitset&) = delete;
 
-    dynamic_bitset(dynamic_bitset&& other)
-        : sdo(0), numbits(word_size) {
-        if (other.numbits == word_size) {
-            sdo = other.sdo;
+    dynamic_bitset(dynamic_bitset&& other) {
+        if (other.using_sdo()) {
+            new (&sdo) bitset(std::move(other.sdo));
+            numbits = other.numbits;
         } else {
-            sdo.~bitset();
-            new (&dyna) bitset_array(std::move(other.dyna));
-            other.dyna.~unique_ptr();
+            dyna = other.dyna;
             numbits = other.numbits;
             other.numbits = word_size;
-            other.sdo = 0;
+            new (&other.sdo) bitset(0);
         }
     }
 
     dynamic_bitset& operator=(dynamic_bitset&& other) {
-        if (numbits == word_size) {
-            sdo.~bitset<word_size>();
+        if (using_sdo()) {
+            sdo.~bitset();
         } else {
-            dyna.~unique_ptr();
+            delete[] dyna;
         }
-        if (other.numbits == word_size) {
-            sdo = other.sdo;
+        if (other.using_sdo()) {
+            new (&sdo) bitset(std::move(other.sdo));
         } else {
-            new (&dyna) bitset_array(std::move(other.dyna));
-            other.dyna.~unique_ptr();
+            dyna = other.dyna;
         }
         numbits = other.numbits;
-        other.sdo = 0;
+        new (&other.sdo) bitset(0);
         other.numbits = word_size;
         return *this;
     }
 
     ~dynamic_bitset() {
-        if (numbits == word_size) {
+        if (using_sdo()) {
             sdo.~bitset();
         } else {
-            dyna.~unique_ptr();
+            delete[] dyna;
         }
     }
 
@@ -96,58 +93,78 @@ public:
         return numbits;
     }
 
-    void resize(size_type ns) {
-        if (ns > numbits) {
-            auto count = (ns + word_size - 1u) / word_size;
+    bool using_sdo() const {
+        return numbits == word_size;
+    }
+
+    void resize(size_type i) {
+        if (i > numbits) {
+            auto count = (i + word_size - 1) / word_size;
+            auto newptr = new bitset[count];
             auto newlen = count * word_size;
-            auto newptr = std::make_unique<bitset[]>(count);
-            if (numbits == word_size) {
-                newptr[0] = sdo;
+            auto bitarr = using_sdo() ? &sdo : dyna;
+            copy(bitarr, bitarr + (numbits / word_size), newptr);
+            if (using_sdo()) {
                 sdo.~bitset();
-                new (&dyna) bitset_array(std::move(newptr));
             } else {
-                copy(dyna.get(), dyna.get() + (numbits / word_size), newptr.get());
-                std::fill(newptr.get() + (numbits / word_size), newptr.get() + (newlen / word_size), 0);
-                dyna = std::move(newptr);
+                delete[] dyna;
             }
+            dyna = newptr;
             numbits = newlen;
         }
     }
 
     bool get(size_type i) const {
-        if (numbits == word_size) {
-            return sdo[i];
-        } else {
-            return dyna[i / 64][i % 64];
-        }
+        if (i >= numbits) return false;
+        const auto& bits = using_sdo() ? sdo : dyna[i / word_size];
+        return bits[i % word_size];
     }
 
     void set(size_type i) {
-        resize(i + 1);
-        if (numbits == word_size) {
+        if (using_sdo() && i < word_size) {
             sdo[i] = true;
         } else {
-            dyna[i / 64][i % 64] = true;
+            resize(i + 1);
+            auto& bits = using_sdo() ? sdo : dyna[i / word_size];
+            bits[i % word_size] = true;
         }
     }
 
     void unset(size_type i) {
-        resize(i + 1);
-        if (numbits == word_size) {
-            sdo[i] = false;
-        } else {
-            dyna[i / 64][i % 64] = false;
+        if (i < numbits) {
+            auto& bits = using_sdo() ? sdo : dyna[i / word_size];
+            bits[i % word_size] = false;
         }
     }
 
     void zero() {
-        if (numbits == word_size) {
-            sdo = 0;
-        } else {
-            std::fill(dyna.get(), dyna.get() + numbits / word_size, 0);
-        }
+        auto bitarr = using_sdo() ? &sdo : dyna;
+        std::fill(bitarr, bitarr + numbits / word_size, 0);
     }
 
+    bool query_mask(const dynamic_bitset& mask) const {
+        if (using_sdo() && mask.using_sdo()) {
+            return (sdo & mask.sdo) == mask.sdo;
+        }
+
+        auto self_len = numbits / word_size;
+        auto mask_len = mask.numbits / word_size;
+        auto self_iter = (self_len == 1) ? &sdo : dyna;
+        auto mask_iter = (mask_len == 1) ? &mask.sdo : mask.dyna;
+        for (size_type i = 0; i < mask_len; ++i) {
+            if (i < self_len) {
+                if ((self_iter[i] & mask_iter[i]) != mask_iter[i]) {
+                    return false;
+                }
+            } else {
+                if (mask_iter[i].any()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    
 private:
     union {
         bitset sdo;
@@ -283,40 +300,34 @@ struct inverted : noload {};
 
 // Component Traits
 
-template <typename DB, typename Component>
+template <typename Component>
 struct component_traits {
     using category = component_tags::normal;
     using component = Component;
 };
 
-template <typename DB, typename Component>
-struct component_traits<DB, require<Component>> {
+template <typename Component>
+struct component_traits<require<Component>> {
     using category = component_tags::noload;
     using component = Component;
 };
 
-template <typename DB, typename Component>
-struct component_traits<DB, tag<Component>> {
+template <typename Component>
+struct component_traits<tag<Component>> {
     using category = component_tags::tagged;
     using component = tag<Component>;
 };
 
-template <typename DB, typename Component>
-struct component_traits<DB, optional<Component>> {
+template <typename Component>
+struct component_traits<optional<Component>> {
     using category = component_tags::optional;
     using component = Component;
 };
 
-template <typename DB, typename Component>
-struct component_traits<DB, deny<Component>> {
+template <typename Component>
+struct component_traits<deny<Component>> {
     using category = component_tags::inverted;
     using component = Component;
-};
-
-template <typename DB>
-struct component_traits<DB, typename DB::ent_id> {
-    using category = component_tags::eid;
-    using component = void;
 };
 
 // First
@@ -346,16 +357,8 @@ using get_primary_t = typename get_primary<DB, Components...>::type;
 
 template <typename DB, typename HeadCom, typename... Components>
 struct get_primary<DB, HeadCom, Components...> {
-    static constexpr auto get() {
-        using category = typename component_traits<DB, HeadCom>::category;
-        if constexpr (std::is_same_v<category, component_tags::normal>) {
-            return primary<HeadCom>{};
-        } else {
-            return get_primary_t<DB, Components...>{};
-        }
-    }
-
-    using type = decltype(get());
+    using category = typename component_traits<HeadCom>::category;
+    using type = std::conditional_t<std::is_same_v<category, component_tags::normal>, primary<HeadCom>, get_primary_t<DB, Components...>>;
 };
 
 template <typename DB>
@@ -370,12 +373,6 @@ struct database_traits {
 
     using ent_id = typename DB::ent_id;
     using com_id = typename DB::com_id;
-
-    template <typename C>
-    using component_traits = component_traits<DB, C>;
-
-    template <typename... Components>
-    using get_primary_t = get_primary_t<DB, Components...>;
 
     // VisitorKey
 
@@ -420,7 +417,7 @@ struct database_traits {
     struct visitor_traits_impl {
         using ent_id = typename DB::ent_id;
         using com_id = typename DB::com_id;
-        using primary_component = get_primary_t<Components...>;
+        using primary_component = get_primary_t<DB, Components...>;
         using key = visitor_key<primary_component, Components...>;
 
         template <typename Com, typename Primary>
@@ -796,6 +793,9 @@ public:
     template <typename T>
     void create_component(ent_id eid, optional<T> com) = delete;
 
+    template <typename T>
+    void create_component(ent_id eid, ent_id com) = delete;
+
     /*! Destroy a component.
      *
      * Destroys the given component and disassociates it from its Entity.
@@ -976,6 +976,12 @@ private:
     std::vector<entity> entities;
     std::vector<ent_id> free_entities;
     std::vector<std::unique_ptr<component_set>> component_sets;
+};
+
+template <>
+struct component_traits<database::ent_id> {
+    using category = component_tags::eid;
+    using component = void;
 };
 
 } // namespace _detail

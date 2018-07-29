@@ -169,6 +169,25 @@ TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
     REQUIRE(num_visited == 0);
 }
 
+TEST_CASE("ent_id matches all entities and is the entity's id", "[ginseng]")
+{
+    DB db;
+
+    db.create_entity();
+    db.create_entity();
+    db.create_entity();
+
+    int visited[] = {0, 0, 0};
+
+    db.visit([&](DB::ent_id eid){
+        ++visited[eid.get_index()];
+    });
+
+    REQUIRE(visited[0] == 1);
+    REQUIRE(visited[1] == 1);
+    REQUIRE(visited[2] == 1);
+}
+
 TEST_CASE("optional can be used instead of components", "[ginseng]")
 {
     DB db;
