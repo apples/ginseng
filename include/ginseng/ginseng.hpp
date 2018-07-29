@@ -23,16 +23,9 @@ inline type_guid get_next_type_guid() noexcept {
 }
 
 template <typename T>
-struct type_guid_trait {
-    static const type_guid value;
-};
-
-template <typename T>
-const type_guid type_guid_trait<T>::value = get_next_type_guid();
-
-template <typename T>
 type_guid get_type_guid() {
-    return type_guid_trait<T>::value;
+    static const type_guid my_guid = get_next_type_guid();
+    return my_guid;
 }
 
 // Dynamic Bitset
@@ -160,6 +153,24 @@ public:
                 if (mask_iter[i].any()) {
                     return false;
                 }
+            }
+        }
+        return true;
+    }
+
+    bool query_mask_inverse(const dynamic_bitset& mask) const {
+        if (using_sdo() && mask.using_sdo()) {
+            return (sdo & mask.sdo) == 0;
+        }
+
+        auto self_len = numbits / word_size;
+        auto mask_len = mask.numbits / word_size;
+        auto len = std::min(self_len, mask_len);
+        auto self_iter = (self_len == 1) ? &sdo : dyna;
+        auto mask_iter = (mask_len == 1) ? &mask.sdo : mask.dyna;
+        for (size_type i = 0; i < len; ++i) {
+            if ((self_iter[i] & mask_iter[i]) != 0) {
+                return false;
             }
         }
         return true;
@@ -294,7 +305,7 @@ struct tagged : positive, unit {};
 struct meta {};
 struct optional : meta {};
 struct eid : meta {};
-struct inverted : noload {};
+struct inverted : unit {};
 
 } // namespace component_tags
 
@@ -376,38 +387,38 @@ struct database_traits {
 
     // VisitorKey
 
-    template <typename Primary, typename... Coms>
-    struct visitor_key;
+    template <typename... Coms>
+    struct visitor_key {
+    public:
+        static const dynamic_bitset& positive_mask() {
+            static const dynamic_bitset mask = [] {
+                dynamic_bitset mask;
+                mask.set(0);
+                (set_bit<component_tags::positive, Coms>(mask), ...);
+                return mask;
+            }();
+            return mask;
+        }
 
-    template <typename Primary, typename... Coms>
-    struct visitor_key<primary<Primary>, Coms...> {
-        template <typename Com>
-        static bool check(DB& db, ent_id eid, component_tags::positive) {
-            using component = typename component_traits<Com>::component;
-            if constexpr (std::is_same_v<Primary, component>) {
-                return true;
-            } else {
-                return db.template has_component<component>(eid);
+        static const dynamic_bitset& inverted_mask() {
+            static const dynamic_bitset mask = [] {
+                dynamic_bitset mask;
+                (set_bit<component_tags::inverted, Coms>(mask), ...);
+                return mask;
+            }();
+            return mask;
+        }
+
+    private:
+        template <typename Tag, typename Com>
+        static bool set_bit(dynamic_bitset& bits) {
+            using traits = component_traits<Com>;
+            using component = typename traits::component;
+            using category = typename traits::category;
+
+            if constexpr (std::is_base_of_v<Tag, category>) {
+                bits.set(get_type_guid<component>());
             }
-        }
-
-        template <typename Com>
-        static bool check(DB& db, ent_id eid, component_tags::inverted) {
-            using component = typename component_traits<Com>::component;
-            using inverted_key = visitor_key<primary<Primary>, component>;
-            return !inverted_key::check(db, eid);
-        }
-
-        template <typename Com>
-        static bool check(DB& db, ent_id eid, component_tags::meta) {
-            return true;
-        }
-
-        template <typename Com>
-        using tag_t = typename component_traits<Com>::category;
-
-        static bool check(DB& db, ent_id eid) {
-            return (check<Coms>(db, eid, tag_t<Coms>{}) && ...);
         }
     };
 
@@ -418,7 +429,7 @@ struct database_traits {
         using ent_id = typename DB::ent_id;
         using com_id = typename DB::com_id;
         using primary_component = get_primary_t<DB, Components...>;
-        using key = visitor_key<primary_component, Components...>;
+        using key = visitor_key<Components...>;
 
         template <typename Com, typename Primary>
         static Com& get_com(component_tags::normal, DB& db, const ent_id& eid, const com_id& primary_cid, primary<Primary>) {
@@ -952,7 +963,10 @@ private:
             for (com_id cid = 0, sz = com_set.size(); cid < sz; ++cid) {
                 if (com_set.is_valid(cid)) {
                     auto eid = com_set.get_entid(cid);
-                    if (key::check(*this, eid)) {
+                    auto& com_bits = entities[eid].components;
+                    auto& pos_mask = key::positive_mask();
+                    auto& inv_mask = key::inverted_mask();
+                    if (com_bits.query_mask(pos_mask) && com_bits.query_mask_inverse(inv_mask)) {
                         traits::apply(*this, eid, cid, visitor);
                     }
                 }
@@ -967,7 +981,10 @@ private:
         using key = typename traits::key;
 
         for (auto eid = 0; eid < entities.size(); ++eid) {
-            if (entities[eid].components.get(0) && key::check(*this, eid)) {
+            auto& com_bits = entities[eid].components;
+            auto& pos_mask = key::positive_mask();
+            auto& inv_mask = key::inverted_mask();
+            if (com_bits.query_mask(pos_mask) && com_bits.query_mask_inverse(inv_mask)) {
                 traits::apply(*this, eid, {}, visitor);
             }
         }

@@ -9,7 +9,7 @@ using ginseng::optional;
 using ent_id = DB::ent_id;
 using com_id = DB::com_id;
 
-TEST_CASE("tag types do deny use dynamic allocation", "[ginseng]")
+TEST_CASE("tag types do not use dynamic allocation", "[ginseng]")
 {
     // Not sure how to actually test this.
     // Instead, I'll just check to make sure it actually compiles.
