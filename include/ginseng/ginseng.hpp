@@ -452,13 +452,6 @@ struct database_traits {
             }
         }
 
-        template <typename Visitor>
-        auto apply(DB& db, ent_id eid, com_id primary_cid, Visitor&& visitor, primary<void>) {
-            if (key.check(db, eid)) {
-                return std::forward<Visitor>(visitor)(get_com<Components>(tag_t<Components>{}, db, eid, primary_cid, primary<void>{})...);
-            }
-        }
-
     private:
         template <typename Com, typename Primary>
         static Com& get_com(component_tags::normal, DB& db, const ent_id& eid, const com_id& primary_cid, type_guid guid, primary<Primary>) {
