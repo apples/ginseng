@@ -960,7 +960,7 @@ private:
 
     template <typename Com>
     component_set_impl<Com>* get_com_set(type_guid guid) {
-        if (__builtin_expect(guid >= component_sets.size(), 0)) {
+        if (guid >= component_sets.size()) {
             return nullptr;
         }
         return unsafe_get_com_set<Com>(guid);
