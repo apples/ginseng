@@ -755,19 +755,19 @@ public:
         free_entities.push_back(eid);
     }
 
-    /*! Create new component.
+    /*! Adds a component to an entity.
      *
-     * Creates a new component from the given value and associates it with
-     * the given Entity.
-     * If a component of the same type already exists, it will be
-     * overwritten.
+     * If a component of the same type already exists for this entity,
+     * the given component will be forward-assigned to it.
+     * 
+     * Otherwise, moves or copies the given component and adds it to the entity.
      *
      * @param eid Entity to attach new component to.
      * @param com Component value.
      * @return ID of component.
      */
     template <typename T>
-    com_id create_component(ent_id eid, T&& com) {
+    com_id add_component(ent_id eid, T&& com) {
         using com_type = std::decay_t<T>;
         auto guid = get_type_guid<com_type>();
         auto& ent_coms = entities[eid].components;
@@ -788,13 +788,13 @@ public:
 
     /*! Create new Tag component.
      *
-     * Creates a new Tag component associates it with the given Entity.
+     * Adds the tag to the entity if it does not already exist.
      *
      * @param eid Entity to attach new Tag component to.
      * @param com Tag value.
      */
     template <typename T>
-    void create_component(ent_id eid, tag<T> com) {
+    void add_component(ent_id eid, tag<T> com) {
         auto guid = get_type_guid<tag<T>>();
         auto& ent_coms = entities[eid].components;
 
@@ -804,20 +804,20 @@ public:
     }
 
     template <typename T>
-    void create_component(ent_id eid, require<T> com) = delete;
+    void add_component(ent_id eid, require<T> com) = delete;
 
     template <typename T>
-    void create_component(ent_id eid, deny<T> com) = delete;
+    void add_component(ent_id eid, deny<T> com) = delete;
 
     template <typename T>
-    void create_component(ent_id eid, optional<T> com) = delete;
+    void add_component(ent_id eid, optional<T> com) = delete;
 
     template <typename T>
-    void create_component(ent_id eid, ent_id com) = delete;
+    void add_component(ent_id eid, ent_id com) = delete;
 
-    /*! Destroy a component.
+    /*! Remove a component from an entity.
      *
-     * Destroys the given component and disassociates it from its Entity.
+     * Removes the component from the entity and destroys it.
      *
      * @warning
      * All ComIDs associated with components of the component's Entity will
@@ -828,7 +828,7 @@ public:
      * @param eid ID of the entity.
      */
     template <typename Com>
-    void destroy_component(ent_id eid) {
+    void remove_component(ent_id eid) {
         auto guid = get_type_guid<Com>();
         auto& com_set = *get_com_set<Com>();
         com_set.remove(eid);
@@ -895,21 +895,22 @@ public:
      *
      * The following parameter categories are accepted:
      *
-     * - Component Data: Any `T` except rvalue-references, matches entities that have component `T`.
-     * - Component Tag: `tag<T>` value, matches entities that have component `tag<T>`.
-     * - Component Require: `require<T>` value, matches entities that have component `T`, but does not load it.
-     * - Component Optional: `optional<T>` value, checks if a component exists, and loads it, does not fail.
-     * - Inverted: `deny<T>` value, matches entities that do *not* match component `T`.
-     * - Entity ID: `ent_id`, matches all entities, provides the `ent_id` of the current entity.
+     * - `T`, matches entities that have component `T`, and loads the component.
+     * - `tag<T>`, matches entities that have component `tag<T>`.
+     * - `require<T>`, matches entities that have component `T`, but does not load it.
+     * - `optional<T>`, matches all entities, loads component `T` if it exists.
+     * - `deny<T>`, matches entities that do *not* match component `T`.
+     * - `ent_id`, matches all entities, provides the `ent_id` of the current entity.
      *
-     * Component Data and Optional parameters will refer to the entity's matching component.
-     * Entity ID parameters will contain the entity's EntID.
+     * `T` and `optional<T>` parameters will refer to the entity's matching component.
+     * `ent_id` parameters will contain the entity's `ent_id`.
      * Other parameters will be their default value.
      *
      * Entities that do not match all given parameter conditions will be skipped.
      *
-     * @warning Entities are visited in no particular order, so adding and removing entities from the visitor
-     *          function could result in non-deterministic behavior.
+     * @warning Entities are visited in no particular order, so creating and destroying
+     *          entities or adding or removing components from within the visitor
+     *          could result in weird behavior.
      *
      * @tparam Visitor Visitor function type.
      * @param visitor Visitor function.

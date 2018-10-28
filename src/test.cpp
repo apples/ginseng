@@ -41,12 +41,12 @@ TEST_CASE("Components can be added, accessed, and removed from entities", "[gins
         double y;
     };
 
-    db.create_component(ent, ComA{7});
+    db.add_component(ent, ComA{7});
     REQUIRE(db.has_component<ComA>(ent) == true);
     ComA *com1ptr1 = &db.get_component<ComA>(ent);
     REQUIRE(com1ptr1 != nullptr);
 
-    db.create_component(ent, ComB{4.2});
+    db.add_component(ent, ComB{4.2});
     REQUIRE(db.has_component<ComB>(ent) == true);
     ComB *com2ptr1 = &db.get_component<ComB>(ent);
     REQUIRE(com2ptr1 != nullptr);
@@ -57,14 +57,14 @@ TEST_CASE("Components can be added, accessed, and removed from entities", "[gins
     REQUIRE(&db.get_component<ComB>(ent) == com2ptr1);
     REQUIRE(db.get_component<ComB>(ent).y == 4.2);
 
-    db.destroy_component<ComA>(ent);
+    db.remove_component<ComA>(ent);
     REQUIRE(db.has_component<ComA>(ent) == false);
     REQUIRE(db.has_component<ComB>(ent) == true);
 
     REQUIRE(&db.get_component<ComB>(ent) == com2ptr1);
     REQUIRE(db.get_component<ComB>(ent).y == 4.2);
 
-    db.destroy_component<ComB>(ent);
+    db.remove_component<ComB>(ent);
     REQUIRE(db.has_component<ComA>(ent) == false);
     REQUIRE(db.has_component<ComB>(ent) == false);
 }
@@ -82,10 +82,10 @@ TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
     auto make_ent = [&](bool give_Data1, bool give_Data2)
     {
         auto ent = db.create_entity();
-        db.create_component(ent, ID{next_id});
+        db.add_component(ent, ID{next_id});
         ++next_id;
-        if (give_Data1) { db.create_component(ent, Data1{7}); }
-        if (give_Data2) { db.create_component(ent, Data2{nullptr}); }
+        if (give_Data1) { db.add_component(ent, Data1{7}); }
+        if (give_Data2) { db.add_component(ent, Data2{nullptr}); }
         return ent;
     };
 
@@ -196,7 +196,7 @@ TEST_CASE("optional can be used instead of components", "[ginseng]")
     struct Data2 {};
 
     auto ent = db.create_entity();
-    db.create_component(ent,Data{});
+    db.add_component(ent,Data{});
 
     int visited = 0;
     optional<Data> mdata;
@@ -224,7 +224,7 @@ TEST_CASE("deleted entites are not revisited", "[ginseng]")
     int visited = 0;
     db.visit([&](ent_id eid){
         ++visited;
-        db.create_component(eid, Data{});
+        db.add_component(eid, Data{});
     });
     REQUIRE(visited == 3);
 

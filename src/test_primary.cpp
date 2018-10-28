@@ -23,7 +23,7 @@ TEST_CASE("Primary components are visited in cache-freindly order", "[ginseng]")
     auto make_ent = [&]()
     {
         auto ent = db.create_entity();
-        db.create_component(ent, ID{next_id});
+        db.add_component(ent, ID{next_id});
         ++next_id;
         return ent;
     };
@@ -35,11 +35,11 @@ TEST_CASE("Primary components are visited in cache-freindly order", "[ginseng]")
     eids.push_back(db.create_entity());
     eids.push_back(db.create_entity());
 
-    db.create_component(eids[1], ID{next_id++});
-    db.create_component(eids[3], ID{next_id++});
-    db.create_component(eids[0], ID{next_id++});
-    db.create_component(eids[4], ID{next_id++});
-    db.create_component(eids[2], ID{next_id++});
+    db.add_component(eids[1], ID{next_id++});
+    db.add_component(eids[3], ID{next_id++});
+    db.add_component(eids[0], ID{next_id++});
+    db.add_component(eids[4], ID{next_id++});
+    db.add_component(eids[2], ID{next_id++});
 
     std::vector<ID*> ptrs;
     ptrs.reserve(5);
@@ -51,11 +51,11 @@ TEST_CASE("Primary components are visited in cache-freindly order", "[ginseng]")
     db.visit([&](ent_id eid, ID& id) { ptrs.push_back(&id); });
     REQUIRE(std::is_sorted(begin(ptrs), end(ptrs)));
 
-    db.create_component(eids[0], Data{7.5});
-    db.create_component(eids[3], Data{7.5});
-    db.create_component(eids[1], Data{7.5});
-    db.create_component(eids[2], Data{7.5});
-    db.create_component(eids[4], Data{7.5});
+    db.add_component(eids[0], Data{7.5});
+    db.add_component(eids[3], Data{7.5});
+    db.add_component(eids[1], Data{7.5});
+    db.add_component(eids[2], Data{7.5});
+    db.add_component(eids[4], Data{7.5});
 
     ptrs.clear();
     db.visit([&](ID& id) { ptrs.push_back(&id); });

@@ -20,7 +20,7 @@ TEST_CASE("tag types do not use dynamic allocation", "[ginseng]")
     struct Sometag2 {};
 
     auto ent = db.create_entity();
-    db.create_component(ent, tag<Sometag>{});
+    db.add_component(ent, tag<Sometag>{});
 
     int visited;
 
