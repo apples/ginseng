@@ -22,7 +22,7 @@ TEST_CASE("Component sets can handle many components", "[ginseng]")
     auto make_ent = [&]()
     {
         auto ent = db.create_entity();
-        db.create_component(ent, ID{next_id});
+        db.add_component(ent, ID{next_id});
         ++next_id;
         return ent;
     };

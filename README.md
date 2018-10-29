@@ -59,14 +59,14 @@ struct Game {
         // db.create_entity() returns an entity ID.
         auto player = db.create_entity();
         
-        // db.create_component() copies the given component into the entity.
-        db.create_component(player, NameCom{"The Player"});
-        db.create_component(player, PositionCom{12, 42});
+        // db.add_component() emplaces the given component into the entity.
+        db.add_component(player, NameCom{"The Player"});
+        db.add_component(player, PositionCom{12, 42});
         
         auto enemy = db.create_entity();
-        db.create_component(enemy, NameCom{"An Enemy"});
-        db.create_component(enemy, PositionCom{7, 53});
-        db.create_component(enemy, IsEnemyTag{});
+        db.add_component(enemy, NameCom{"An Enemy"});
+        db.add_component(enemy, PositionCom{7, 53});
+        db.add_component(enemy, IsEnemyTag{});
     }
     
     void run_game() {
@@ -77,7 +77,7 @@ struct Game {
                       << std::endl;
         });
     
-        // The Not<> annotation can be used to skip unwanted entities.
+        // The deny<> annotation can be used to skip unwanted entities.
         db.visit([](const NameCom& name, deny<IsEnemyTag>){
             std::cout << name.name << " is not an enemy." << std::endl;
         });
