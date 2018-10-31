@@ -1,9 +1,10 @@
 cmake_minimum_required (VERSION 3.0)
 project(Ginseng)
 
-file(GLOB_RECURSE ginseng_SOURCES include/ginseng/*)
+set(GINSENG_BUILD_EXAMPLES No CACHE BOOL "Build examples")
+
 add_library(ginseng INTERFACE)
-set_property(TARGET ginseng PROPERTY INTERFACE_SOURCES ${ginseng_SOURCES})
+set_property(TARGET ginseng PROPERTY INTERFACE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/include/ginseng/ginseng.hpp)
 target_include_directories(ginseng INTERFACE include)
 
 add_executable(test_ginseng EXCLUDE_FROM_ALL
@@ -16,3 +17,7 @@ add_executable(test_ginseng EXCLUDE_FROM_ALL
   src/test_bitset.cpp)
 set_property(TARGET test_ginseng PROPERTY CXX_STANDARD 17)
 target_link_libraries(test_ginseng ginseng)
+
+if(GINSENG_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
