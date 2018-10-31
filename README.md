@@ -16,74 +16,105 @@ The function's parameters are used to determine the required components.
 - No exceptions are thrown.
 - Unlimited component types.
 - Systems are just regular functions.
+- Component objects are stable and can be added or removed freely.
 
 ## Status
 
 Ginseng is currently in-development, but it already works exceptionally well.
 
-It is not stable yet, but a 1.0 release is approaching quickly.
+Version 1.0 is considered stable.
 
 ## Dependencies
 
 There are none! Ginseng is a single-header library that only requires C++17.
 
-## Example
+## Examples
 
-An example of Ginseng being used in a game:
+See the `examples/` directory.
 
-```c++
-#include <ginseng/ginseng.hpp>
+## Tutorial
 
-using ginseng::database;
-using ginseng::tag;
-using ginseng::deny;
+Creating a Ginseng database:
 
-// Components can be any value type.
+```cpp
+auto database = ginseng::database{};
+```
 
-struct NameCom {
-    std::string name;
-};
+No configuration needed.
 
-struct PositionCom {
-    double x;
-    double y;
-};
+Creating a position component:
 
-// Tag components will not contain a value (no allocation).
-using IsEnemyTag = tag<struct IsEnemy>;
-
-struct Game {
-    database db; // Databases are value types.
-    
-    Game() {
-        // db.create_entity() returns an entity ID.
-        auto player = db.create_entity();
-        
-        // db.add_component() emplaces the given component into the entity.
-        db.add_component(player, NameCom{"The Player"});
-        db.add_component(player, PositionCom{12, 42});
-        
-        auto enemy = db.create_entity();
-        db.add_component(enemy, NameCom{"An Enemy"});
-        db.add_component(enemy, PositionCom{7, 53});
-        db.add_component(enemy, IsEnemyTag{});
-    }
-    
-    void run_game() {
-        // db.visit() automatically detects visitor parameters.
-        db.visit([](const NameCom& name, const PositionCom& pos){
-            std::cout << "Entity " << name.name
-                      << " is at (" << pos.x << "," << pos.y << ")."
-                      << std::endl;
-        });
-    
-        // The deny<> annotation can be used to skip unwanted entities.
-        db.visit([](const NameCom& name, deny<IsEnemyTag>){
-            std::cout << name.name << " is not an enemy." << std::endl;
-        });
-    }
+```cpp
+struct position {
+    float x;
+    float y;
 };
 ```
+
+Components are just regular value types.
+
+Creating an entity:
+
+```cpp
+auto eid = database.create_entity();
+```
+
+Adding a component to an entity:
+
+```cpp
+database.add_component(eid, position{7, 42});
+```
+
+Checking for and getting a component from an entity:
+
+```cpp
+if (database.has_component<position>(eid)) {
+    auto& pos = database.get_component<position>(eid);
+}
+```
+
+Visiting all entities with a set of components:
+
+```cpp
+database.visit([](position& pos, velocity& vel) {
+    pos.x += vel.x;
+    pos.y += vel.y;
+});
+```
+
+Visitor parameter types are used to fetch components.
+
+Removing a component from an entity:
+
+```cpp
+database.remove_component<position>(eid);
+```
+
+Destroying an entity:
+
+```cpp
+database.destroy_entity(eid);
+```
+
+Destroying an entity also destroys its components.
+
+Creating a tag component:
+
+```cpp
+using my_tag = ginseng::tag<struct my_tag_t>;
+```
+
+Tags are empty components that do not occupy memory.
+
+Removing all entities that have a tag:
+
+```cpp
+database.visit([](ginseng::database::ent_id eid, my_tag) {
+    database.destroy_entity(eid);
+});
+```
+
+It is safe to add or remove entities or components while visiting.
 
 ## License
 

@@ -3,5 +3,6 @@
 !.clang-format
 !*.md
 !*.txt
+!examples
 !include
 !src
