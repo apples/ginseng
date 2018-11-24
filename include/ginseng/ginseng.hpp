@@ -933,7 +933,7 @@ public:
     }
 
 private:
-    friend class database_traits<database>;
+    friend struct database_traits<database>;
 
     template <typename Com>
     Com& get_component(ent_id eid, type_guid guid) {
