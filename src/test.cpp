@@ -248,3 +248,44 @@ TEST_CASE("deleted entites are not revisited", "[ginseng]")
     });
     REQUIRE(visited == 2);
 }
+
+TEST_CASE("versioning works", "[ginseng]")
+{
+    DB db;
+
+    auto ent1 = db.create_entity();
+    auto ent2 = db.create_entity();
+    auto ent3 = db.create_entity();
+
+    REQUIRE(db.exists(ent1));
+    REQUIRE(db.exists(ent2));
+    REQUIRE(db.exists(ent3));
+
+    db.destroy_entity(ent2);
+
+    REQUIRE(db.exists(ent1));
+    REQUIRE(!db.exists(ent2));
+    REQUIRE(db.exists(ent3));
+
+    db.destroy_entity(ent1);
+
+    REQUIRE(!db.exists(ent1));
+    REQUIRE(!db.exists(ent2));
+    REQUIRE(db.exists(ent3));
+
+    db.destroy_entity(ent3);
+
+    REQUIRE(!db.exists(ent1));
+    REQUIRE(!db.exists(ent2));
+    REQUIRE(!db.exists(ent3));
+
+    auto ent4 = db.create_entity();
+
+    REQUIRE(!(ent4 == ent1));
+    REQUIRE(!(ent4 == ent2));
+    REQUIRE(!(ent4 == ent3));
+    REQUIRE(!db.exists(ent1));
+    REQUIRE(!db.exists(ent2));
+    REQUIRE(!db.exists(ent3));
+    REQUIRE(db.exists(ent4));
+}

@@ -148,7 +148,7 @@ public:
         auto bitarr = using_sdo() ? &sdo : dyna;
         std::fill(bitarr, bitarr + numbits / word_size, 0);
     }
-    
+
 private:
     union {
         bitset sdo;
@@ -160,7 +160,9 @@ private:
 // Entity
 
 struct entity {
+    using version_type = std::size_t;
     dynamic_bitset components = {};
+    version_type version = 0;
 };
 
 // False Type
@@ -396,7 +398,7 @@ struct database_traits {
                 return 0;
             }
         }
-    
+
     private:
         template <typename Com>
         static bool check(DB& db, ent_id eid, type_guid guid, component_tags::positive) {
@@ -710,7 +712,27 @@ public:
 
     /*! Entity ID.
      */
-    using ent_id = opaque_index<struct ent_id_tag, database, std::vector<entity>::size_type>;
+    class ent_id {
+    public:
+        friend class database;
+        using index_type = std::vector<entity>::size_type;
+        using version_type = entity::version_type;
+
+        bool operator==(const ent_id& other) {
+            return index == other.index && version == other.version;
+        }
+
+        index_type get_index() const {
+            return index;
+        }
+
+    private:
+        ent_id(index_type i, version_type v)
+            : index(i), version(v) {}
+
+        index_type index = 0;
+        version_type version = 0;
+    };
 
     /*! Component ID.
      */
@@ -723,43 +745,60 @@ public:
      * @return ID of the new Entity.
      */
     ent_id create_entity() {
-        ent_id eid;
+        ent_id::index_type index;
 
         if (free_entities.empty()) {
-            eid = entities.size();
+            index = entities.size();
             entities.emplace_back();
         } else {
-            eid = free_entities.back();
+            index = free_entities.back();
             free_entities.pop_back();
         }
 
-        entities[eid].components.set(0);
+        entities[index].components.set(0);
 
-        return eid;
+        return {index, entities[index].version};
     }
 
     /*! Destroys an Entity.
      *
      * Destroys the given Entity and all associated components.
      *
+     * If the Entity does not exist, no work is done.
+     *
      * @param eid ID of the Entity to erase.
      */
-    void destroy_entity(ent_id eid) {
-        for (dynamic_bitset::size_type i = 1; i < entities[eid].components.size(); ++i) {
-            if (entities[eid].components.get(i)) {
-                component_sets[i]->remove(eid);
+    void destroy_entity(const ent_id& eid) {
+        const auto index = eid.get_index();
+
+        if (entities[index].version != eid.version) {
+            return;
+        }
+
+        for (dynamic_bitset::size_type i = 1; i < entities[index].components.size(); ++i) {
+            if (entities[index].components.get(i)) {
+                component_sets[i]->remove(index);
             }
         }
 
-        entities[eid].components.zero();
-        free_entities.push_back(eid);
+        entities[index].components.zero();
+        ++entities[index].version;
+        free_entities.push_back(index);
+    }
+
+    /*! Determines whether or not an entity exists.
+     *
+     * @param eid ID of the Entity to check.
+     */
+    bool exists(const ent_id& eid) const {
+        return entities[eid.index].version == eid.version && entities[eid.index].components.get(0);
     }
 
     /*! Adds a component to an entity.
      *
      * If a component of the same type already exists for this entity,
      * the given component will be forward-assigned to it.
-     * 
+     *
      * Otherwise, moves or copies the given component and adds it to the entity.
      *
      * @param eid Entity to attach new component to.
@@ -767,19 +806,20 @@ public:
      * @return ID of component.
      */
     template <typename T>
-    com_id add_component(ent_id eid, T&& com) {
+    com_id add_component(const ent_id& eid, T&& com) {
         using com_type = std::decay_t<T>;
+        auto index = eid.get_index();
         auto guid = get_type_guid<com_type>();
-        auto& ent_coms = entities[eid].components;
+        auto& ent_coms = entities[index].components;
         auto& com_set = get_or_create_com_set<com_type>();
 
         com_id cid;
 
         if (guid < ent_coms.size() && ent_coms.get(guid)) {
-            cid = com_set.get_comid(eid);
+            cid = com_set.get_comid(index);
             com_set.get_com(cid) = std::forward<T>(com);
         } else {
-            cid = com_set.assign(eid, std::forward<T>(com));
+            cid = com_set.assign(index, std::forward<T>(com));
             ent_coms.set(guid);
         }
 
@@ -795,8 +835,9 @@ public:
      */
     template <typename T>
     void add_component(ent_id eid, tag<T> com) {
+        auto index = eid.get_index();
         auto guid = get_type_guid<tag<T>>();
-        auto& ent_coms = entities[eid].components;
+        auto& ent_coms = entities[index].components;
 
         get_or_create_com_set<tag<T>>();
 
@@ -819,9 +860,10 @@ public:
      *
      * Removes the component from the entity and destroys it.
      *
+     * If the entity does not exist, no work is done.
+     *
      * @warning
-     * All ComIDs associated with components of the component's Entity will
-     * be invalidated.
+     * All ComIDs associated with the removed component will be invalidated.
      *
      * @tparam Com Type of the component to erase.
      *
@@ -829,10 +871,16 @@ public:
      */
     template <typename Com>
     void remove_component(ent_id eid) {
+        auto index = eid.get_index();
+
+        if (entities[index].version != eid.version) {
+            return;
+        }
+
         auto guid = get_type_guid<Com>();
         auto& com_set = *get_com_set<Com>();
-        com_set.remove(eid);
-        entities[eid].components.unset(guid);
+        com_set.remove(index);
+        entities[index].components.unset(guid);
     }
 
     /*! Get a component.
@@ -851,8 +899,9 @@ public:
      */
     template <typename Com>
     Com& get_component(ent_id eid) {
+        auto index = eid.get_index();
         auto& com_set = *get_com_set<Com>();
-        auto cid = com_set.get_comid(eid);
+        auto cid = com_set.get_comid(index);
         return com_set.get_com(cid);
     }
 
@@ -879,6 +928,8 @@ public:
      * Returns whether or not the entity has a component of the
      * associated type.
      *
+     * If the entity does not exist, returns false.
+     *
      * @tparam Com Type of the component to check.
      *
      * @param eid ID of the entity.
@@ -886,6 +937,12 @@ public:
      */
     template <typename Com>
     bool has_component(ent_id eid) {
+        auto index = eid.get_index();
+
+        if (entities[index].version != eid.version) {
+            return false;
+        }
+
         return has_component<Com>(eid, get_type_guid<Com>());
     }
 
@@ -938,7 +995,7 @@ private:
     template <typename Com>
     Com& get_component(ent_id eid, type_guid guid) {
         auto& com_set = *unsafe_get_com_set<Com>(guid);
-        auto cid = com_set.get_comid(eid);
+        auto cid = com_set.get_comid(eid.get_index());
         return com_set.get_com(cid);
     }
 
@@ -950,7 +1007,7 @@ private:
 
     template <typename Com>
     bool has_component(ent_id eid, type_guid guid) {
-        auto& ent_coms = entities[eid].components;
+        auto& ent_coms = entities[eid.get_index()].components;
         return ent_coms.get(guid);
     }
 
@@ -1000,8 +1057,8 @@ private:
 
             for (com_id cid = 0, sz = com_set.size(); cid < sz; ++cid) {
                 if (com_set.is_valid(cid)) {
-                    auto eid = com_set.get_entid(cid);
-                    traits.apply(*this, eid, cid, visitor);
+                    auto i = com_set.get_entid(cid);
+                    traits.apply(*this, {i, entities[i].version}, cid, visitor);
                 }
             }
         }
@@ -1014,15 +1071,15 @@ private:
 
         auto traits = visitor_traits{};
 
-        for (auto eid = 0; eid < entities.size(); ++eid) {
-            if (entities[eid].components.get(0)) {
-                traits.apply(*this, eid, {}, visitor);
+        for (auto i = 0u; i < entities.size(); ++i) {
+            if (entities[i].components.get(0)) {
+                traits.apply(*this, {i, entities[i].version}, {}, visitor);
             }
         }
     }
 
     std::vector<entity> entities;
-    std::vector<ent_id> free_entities;
+    std::vector<ent_id::index_type> free_entities;
     std::vector<std::unique_ptr<component_set>> component_sets;
 };
 
