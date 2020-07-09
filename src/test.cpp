@@ -308,4 +308,14 @@ TEST_CASE("ent_ids can be copied", "[ginseng]")
     auto& b = db.get_component<Data>(ent2);
 
     REQUIRE(&a == &b);
+
+    ent2 = ent1;
+
+    REQUIRE(ent1 == ent2);
+
+    auto& c = db.get_component<Data>(ent1);
+    auto& d = db.get_component<Data>(ent2);
+
+    REQUIRE(&a == &c);
+    REQUIRE(&c == &d);
 }
