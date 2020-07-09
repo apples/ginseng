@@ -289,3 +289,23 @@ TEST_CASE("versioning works", "[ginseng]")
     REQUIRE(!db.exists(ent3));
     REQUIRE(db.exists(ent4));
 }
+
+TEST_CASE("ent_ids can be copied", "[ginseng]")
+{
+    struct Data { int x; };
+
+    DB db;
+
+    auto ent1 = db.create_entity();
+
+    db.add_component(ent1, Data{42});
+
+    auto ent2 = ent1;
+
+    REQUIRE(ent1 == ent2);
+
+    auto& a = db.get_component<Data>(ent1);
+    auto& b = db.get_component<Data>(ent2);
+
+    REQUIRE(&a == &b);
+}
