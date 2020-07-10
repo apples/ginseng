@@ -31,9 +31,7 @@ There are none! Ginseng is a single-header library that only requires C++17.
 
 See the `examples/` directory.
 
-## Usage
-
-### Setup
+## Setup
 
 Ginseng is header-only, so you just need to include it:
 
@@ -41,7 +39,7 @@ Ginseng is header-only, so you just need to include it:
 #include <ginseng/ginseng.hpp>
 ```
 
-### Initialization
+## Initialization
 
 All operations happen within a "database". The database has no constructor parameters:
 
@@ -51,9 +49,9 @@ auto database = ginseng::database{};
 
 No configuration needed or available.
 
-### Managing Entities
+## Managing Entities
 
-#### Creating an entity
+### Creating an entity
 
 ```cpp
 auto eid = database.create_entity();
@@ -63,7 +61,7 @@ The `ent_id` returned is an opaque struct.
 
 It will be valid until the entity is destroyed, and will never refer to any other entity.
 
-#### Destroying an entity
+### Destroying an entity
 
 ```cpp
 database.destroy_entity(eid);
@@ -73,7 +71,7 @@ Any attached components are also destroyed.
 
 If called again with the same `ent_id`, nothing happens, it is a safe operation.
 
-#### Checking if an entity still exists
+### Checking if an entity still exists
 
 ```cpp
 auto eid = database.create_entity();
@@ -85,9 +83,9 @@ database.destroy_entity(eid);
 assert(database.exists(eid) == false);
 ```
 
-### Managing Components
+## Managing Components
 
-#### Defining a component
+### Defining a component
 
 A component can be any trivial type:
 
@@ -100,7 +98,7 @@ struct position {
 
 The only restriction is that it cannot be a raw pointer type.
 
-#### Adding a component to an entity
+### Adding a component to an entity
 
 ```cpp
 auto pos = position{7, 42};
@@ -113,9 +111,9 @@ and it will remain valid until the component is removed.
 
 However, unlike an `ent_id`, a `com_id` cannot be checked for validity, so it is not recommended to store these.
 
-#### Checking for and getting a component from an entity:
+### Checking for and getting a component from an entity
 
-##### Safe method
+#### Safe method
 
 ```cpp
 if (auto position = database.get_component<position*>(eid)) {
@@ -129,7 +127,7 @@ check for the existence of a component, and access it if it exists.
 
 Note that the template parameter of `get_component` must be a pointer type.
 
-##### Unsafe methods
+#### Unsafe methods
 
 ```cpp
 if (database.has_component<position>(eid)) {
@@ -145,7 +143,7 @@ so it is recommended to always check with `has_component`.
 If the entity referred to by `ent_id` has been destroyed with `destroy_entity`,
 then any call to `has_component` for that `ent_id` will return `false`.
 
-##### Using a `com_id`
+#### Using a `com_id`
 
 ```cpp
 auto& pos = database.get_component_by_id<position>(cid);
@@ -154,7 +152,7 @@ auto& pos = database.get_component_by_id<position>(cid);
 This is only valid with a `com_id` acquired from the most recent call to `add_component`
 for the same type of component on the owning entity.
 
-#### Removing a component from an entity
+### Removing a component from an entity
 
 ```cpp
 database.remove_component<position>(eid);
@@ -165,7 +163,7 @@ This invalidates the `com_id` returned from the `add_component` call that added 
 If the entity referred to by `ent_id` has been destroyed with `destroy_entity`,
 then nothing happens, it is a safe operation.
 
-#### Tags
+### Tags
 
 ```cpp
 using is_enemy_tag = ginseng::tag<struct is_enemy_tag_t>;
@@ -178,7 +176,7 @@ and it is invalid to call `get_component` for a tag type.
 
 The benefit to using a tag is primarily that they do not require storage, and therefore consume no memory.
 
-### Visiting
+## Visiting
 
 ```cpp
 database.visit([](position& pos, const velocity& vel) {
@@ -217,7 +215,7 @@ database.visit([](const player_input& input, position& pos) {
 
 This ensures that only the entities which have a `player_input` are checked for components.
 
-#### Parameter types
+### Parameter types
 
 There are some special parameter types other than references-to-components.
 
