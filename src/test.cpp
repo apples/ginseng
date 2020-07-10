@@ -69,6 +69,24 @@ TEST_CASE("Components can be added, accessed, and removed from entities", "[gins
     REQUIRE(db.has_component<ComB>(ent) == false);
 }
 
+TEST_CASE("get_optional works", "[ginseng]")
+{
+    DB db;
+    auto ent = db.create_entity();
+
+    struct ComA {
+        int x;
+    };
+
+    db.add_component(ent, ComA{2});
+
+    REQUIRE(db.get_component<ComA*>(ent) == &db.get_component<ComA>(ent));
+
+    db.remove_component<ComA>(ent);
+
+    REQUIRE(db.get_component<ComA*>(ent) == nullptr);
+}
+
 TEST_CASE("Databases can visit entities with specific components", "[ginseng]")
 {
     DB db;

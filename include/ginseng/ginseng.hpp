@@ -885,24 +885,45 @@ public:
 
     /*! Get a component.
      *
-     * Gets a reference to the component of the given type
-     * that is associated with the given entity.
-     *
-     * @warning
-     * Behavior is undefined when the entity has no associated
-     * component of the given type.
+     * If Com is a non-pointer type, returns a reference to the component without performing safe checks for existence.
+     * 
+     * Otherwise, if Com is a pointer type,
+     * returns a pointer to the component of the pointed-to type that is associated with the given entity.
+     * 
+     * If the entity has no associated component of the given type, returns nullptr.
+     * 
+     * If the entity does not exist, returns nullptr.
      *
      * @tparam Com Type of the component to get.
      *
      * @param eid ID of the entity.
-     * @return Reference to the component.
+     * @return Either a reference to the component, or a pointer to the component, or nullptr.
      */
     template <typename Com>
-    Com& get_component(ent_id eid) {
-        auto index = eid.get_index();
-        auto& com_set = *get_com_set<Com>();
-        auto cid = com_set.get_comid(index);
-        return com_set.get_com(cid);
+    auto get_component(ent_id eid) -> std::conditional_t<std::is_pointer_v<Com>, Com, Com&> {
+        auto index = eid.index;
+
+        if constexpr (std::is_pointer_v<Com>) {
+            using component_t = std::remove_pointer_t<Com>;
+
+            if (entities[index].version != eid.version) {
+                return nullptr;
+            }
+
+            auto guid = get_type_guid<component_t>();
+
+            if (has_component<component_t>(eid, guid)) {
+                auto& com_set = *get_com_set<component_t>(guid);
+                auto cid = com_set.get_comid(index);
+                return &com_set.get_com(cid);
+            } else {
+                return nullptr;
+            }
+        } else {
+            auto& com_set = *get_com_set<Com>();
+            auto cid = com_set.get_comid(index);
+            return com_set.get_com(cid);
+        }
     }
 
     /*! Get a component by its ID.
