@@ -718,7 +718,7 @@ public:
         using index_type = std::vector<entity>::size_type;
         using version_type = entity::version_type;
 
-        bool operator==(const ent_id& other) {
+        bool operator==(const ent_id& other) const {
             return index == other.index && version == other.version;
         }
 
