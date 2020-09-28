@@ -342,11 +342,17 @@ TEST_CASE("to_ptr and from_ptr work round-trip", "[ginseng]")
 {
     DB db;
 
-    auto ent1 = db.create_entity();
+    for (int i = 0; i < 10; ++i) {
+        db.create_entity();
+    }
 
-    auto ptr1 = db.to_ptr(ent1);
+    auto ent = db.create_entity();
 
-    auto ent2 = db.from_ptr(ptr1);    
+    auto ptr = db.to_ptr(ent);
 
-    REQUIRE(ent1 == ent2);
+    REQUIRE(reinterpret_cast<std::intptr_t>(ptr) == 10);
+
+    auto ent2 = db.from_ptr(ptr);
+
+    REQUIRE(ent == ent2);
 }

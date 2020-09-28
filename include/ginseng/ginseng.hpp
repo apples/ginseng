@@ -1021,6 +1021,7 @@ public:
      * @return A pointer which may be converted back into the same ID using from_ptr(ptr).
      */
     auto to_ptr(const ent_id& eid) const -> void* {
+        static_assert(sizeof(void*) >= sizeof(ent_id::index_type), "Pointer conversion not possible");
         return reinterpret_cast<void*>(eid.get_index());
     }
 
