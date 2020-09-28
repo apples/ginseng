@@ -337,3 +337,16 @@ TEST_CASE("ent_ids can be copied", "[ginseng]")
     REQUIRE(&a == &c);
     REQUIRE(&c == &d);
 }
+
+TEST_CASE("to_ptr and from_ptr work round-trip", "[ginseng]")
+{
+    DB db;
+
+    auto ent1 = db.create_entity();
+
+    auto ptr1 = db.to_ptr(ent1);
+
+    auto ent2 = db.from_ptr(ptr1);    
+
+    REQUIRE(ent1 == ent2);
+}

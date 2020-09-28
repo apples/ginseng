@@ -1010,6 +1010,32 @@ public:
         return entities.size() - free_entities.size();
     }
 
+    /*! Converts an ent_id to a void* for storage purposes.
+     *
+     * @warning This is not a valid pointer and relies on widespread compiler-specific behavior.
+     *          Do not ever dereference the pointer.
+     *          Entity version checking is not preserved through conversion to and from pointers.
+     *          Null pointers are a valid result.
+     * 
+     * @param eid Entity ID to convert to a pointer.
+     * @return A pointer which may be converted back into the same ID using from_ptr(ptr).
+     */
+    auto to_ptr(const ent_id& eid) const -> void* {
+        return reinterpret_cast<void*>(eid.get_index());
+    }
+
+    /*! Converts a void* to an ent_id. The pointer must have been returned from to_ptr(eid).
+     *
+     * @warning The entity must not have been deleted. Version checking is not applied.
+     * 
+     * @param ptr Pointer which was obtained from to_ptr(eid).
+     * @return The original ent_id that was passed to to_ptr(eid).
+     */
+    auto from_ptr(void* ptr) const -> ent_id {
+        auto i = reinterpret_cast<ent_id::index_type>(ptr);
+        return ent_id{i, entities[i].version};
+    }
+
 private:
     friend struct database_traits<database>;
 
