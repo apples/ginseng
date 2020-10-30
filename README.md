@@ -231,6 +231,16 @@ The full list is:
 | `ginseng::require<T>`       | Require a component to exist without actually looking it up, for efficiency.
 | `ginseng::deny<T>`          | Require that a component *not* exist. Recommended to only use with another primary component.
 
+## Other Functions
+
+### `size()`
+
+Returns the total number of entities in the database.
+
+### `count<Com>()`
+
+Counts the number of entities that have a component of type `Com`.
+
 ## License
 
 MIT

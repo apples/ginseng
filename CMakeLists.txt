@@ -14,7 +14,8 @@ add_executable(test_ginseng EXCLUDE_FROM_ALL
   src/test_tags.cpp
   src/test_primary.cpp
   src/test_stress.cpp
-  src/test_bitset.cpp)
+  src/test_bitset.cpp
+  src/test_count.cpp)
 set_property(TARGET test_ginseng PROPERTY CXX_STANDARD 17)
 target_link_libraries(test_ginseng ginseng)
 

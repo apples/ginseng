@@ -539,6 +539,18 @@ public:
     using size_type = std::size_t;
     virtual ~component_set() = 0;
     virtual void remove(size_type entid) = 0;
+
+    size_type get_count() const {
+        return count;
+    }
+
+protected:
+    void set_count(size_type new_count) {
+        count = new_count;
+    }
+
+private:
+    size_type count = 0;
 };
 
 inline component_set::~component_set() = default;
@@ -546,8 +558,8 @@ inline component_set::~component_set() = default;
 template <typename T>
 class component_set_impl final : public component_set {
 public:
-    virtual ~component_set_impl() {
-        for (auto i = size_type{0}, sz = size(); i < sz; ++i) {
+    virtual ~component_set_impl() override {
+        for (auto i = size_type{0}, sz = capacity(); i < sz; ++i) {
             if (is_valid(i)) {
                 auto bucket = get_bucket_index(i);
                 auto rel_index = get_relative_index(bucket, i);
@@ -585,6 +597,8 @@ public:
         entid_to_comid[entid] = index;
         comid_to_entid[index] = entid;
 
+        set_count(get_count() + 1);
+
         return index;
     }
 
@@ -598,6 +612,8 @@ public:
         slot.next_free = free_head;
         free_head = index;
         comid_to_entid[index] = -1;
+
+        set_count(get_count() - 1);
     }
 
     bool is_valid(size_type comid) const {
@@ -619,7 +635,7 @@ public:
         return comid_to_entid[comid];
     }
 
-    auto size() const {
+    size_type capacity() const {
         return back_index;
     }
 
@@ -1010,6 +1026,19 @@ public:
         return entities.size() - free_entities.size();
     }
 
+    /*! Get the number of components of a certain type in the Database.
+     *
+     * @return Number of components of type Com.
+     */
+    template <typename Com>
+    component_set::size_type count() const {
+        if (auto set = get_com_set<Com>()) {
+            return set->get_count();
+        } else {
+            return 0;
+        }
+    }
+
     /*! Converts an ent_id to a void* for storage purposes.
      *
      * @warning This is not a valid pointer and relies on widespread compiler-specific behavior.
@@ -1065,7 +1094,20 @@ private:
     }
 
     template <typename Com>
+    const component_set_impl<Com>* get_com_set() const {
+        return get_com_set<Com>(get_type_guid<Com>());
+    }
+
+    template <typename Com>
     component_set_impl<Com>* get_com_set(type_guid guid) {
+        if (guid >= component_sets.size()) {
+            return nullptr;
+        }
+        return unsafe_get_com_set<Com>(guid);
+    }
+
+    template <typename Com>
+    const component_set_impl<Com>* get_com_set(type_guid guid) const {
         if (guid >= component_sets.size()) {
             return nullptr;
         }
@@ -1076,6 +1118,13 @@ private:
     component_set_impl<Com>* unsafe_get_com_set(type_guid guid) {
         auto& com_set = component_sets[guid];
         auto com_set_impl = static_cast<component_set_impl<Com>*>(com_set.get());
+        return com_set_impl;
+    }
+
+    template <typename Com>
+    const component_set_impl<Com>* unsafe_get_com_set(type_guid guid) const {
+        auto& com_set = component_sets[guid];
+        auto com_set_impl = static_cast<const component_set_impl<Com>*>(com_set.get());
         return com_set_impl;
     }
 
@@ -1103,7 +1152,7 @@ private:
         if (auto com_set_ptr = get_com_set<Component>(traits.template get_guid<Component>())) {
             auto& com_set = *com_set_ptr;
 
-            for (com_id cid = 0, sz = com_set.size(); cid < sz; ++cid) {
+            for (com_id cid = 0, sz = com_set.capacity(); cid < sz; ++cid) {
                 if (com_set.is_valid(cid)) {
                     auto i = com_set.get_entid(cid);
                     traits.apply(*this, {i, entities[i].version}, cid, visitor);
