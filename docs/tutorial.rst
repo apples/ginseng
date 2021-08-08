@@ -47,6 +47,8 @@ Typically this would be placed directly inside of some kind of ``game_state`` cl
 
 There are no constructor parameters or any other setup needed.
 
+Components and systems do not need to be "registered" like in many other ECS libraries.
+
 Defining Components
 *******************
 
