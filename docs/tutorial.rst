@@ -239,4 +239,4 @@ To run a visitor on your entities, use the ``visit`` method:
         pos.y += vel.y;
     });
 
-See the :doc:``visit`` page for more details and examples.
+See the :doc:`visit` page for more details and examples.
