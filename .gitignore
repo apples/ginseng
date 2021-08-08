@@ -6,3 +6,7 @@
 !examples
 !include
 !src
+!docs
+/docs/_build
+/docs/_static
+/docs/_templates
