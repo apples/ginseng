@@ -12,6 +12,7 @@ Welcome to Ginseng's documentation!
 
    tutorial
    visit
+   advanced
 
 Ginseng is a lightweight Entity-Component-System library aimed at rapid prototyping and modular engines.
 
