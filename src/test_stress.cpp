@@ -59,7 +59,7 @@ TEST_CASE("Component sets can handle many components", "[ginseng]")
     REQUIRE(cd == 0);
 
     auto sz2 = 0ull;
-    db.visit([&](ent_id eid, ID& id){
+    db.visit([&](ent_id, ID&){
         ++sz2;
     });
 

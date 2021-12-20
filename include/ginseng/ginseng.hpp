@@ -421,7 +421,7 @@ struct database_traits {
         }
 
         template <typename Com>
-        static bool check(DB& db, ent_id eid, type_guid guid, component_tags::meta) {
+        static bool check([[maybe_unused]] DB& db, [[maybe_unused]] ent_id eid, [[maybe_unused]] type_guid guid, component_tags::meta) {
             return true;
         }
 
@@ -487,23 +487,17 @@ struct database_traits {
         }
 
         template <typename Com, typename Primary>
-        static optional<Com> get_com_optional(component_tags::tagged, DB& db, const ent_id& eid, const com_id& primary_cid, type_guid guid, primary<Primary>) {
-            (void)primary_cid;
+        static optional<Com> get_com_optional(component_tags::tagged, DB& db, const ent_id& eid, [[maybe_unused]] const com_id& primary_cid, type_guid guid, primary<Primary>) {
             return optional<Com>(db.template has_component<Com>(eid, guid));
         }
 
         template <typename Com, typename Primary>
-        static const ent_id& get_com(component_tags::eid, DB& db, const ent_id& eid, const com_id& primary_cid, type_guid guid, primary<Primary>) {
-            (void)db;
-            (void)primary_cid;
+        static const ent_id& get_com(component_tags::eid, [[maybe_unused]] DB& db, const ent_id& eid, [[maybe_unused]] const com_id& primary_cid, [[maybe_unused]] type_guid guid, primary<Primary>) {
             return eid;
         }
 
         template <typename Com, typename Primary>
-        static Com get_com(component_tags::unit, DB& db, const ent_id& eid, const com_id& primary_cid, type_guid guid, primary<Primary>) {
-            (void)db;
-            (void)eid;
-            (void)primary_cid;
+        static Com get_com(component_tags::unit, [[maybe_unused]] DB& db, [[maybe_unused]] const ent_id& eid, [[maybe_unused]] const com_id& primary_cid, [[maybe_unused]] type_guid guid, primary<Primary>) {
             return {};
         }
 
@@ -562,7 +556,7 @@ public:
         for (auto i = size_type{0}, sz = capacity(); i < sz; ++i) {
             if (is_valid(i)) {
                 auto bucket = get_bucket_index(i);
-                auto rel_index = get_relative_index(bucket, i);
+                auto rel_index = get_relative_index(i);
                 buckets[bucket][rel_index].component.~T();
             }
         }
@@ -575,14 +569,13 @@ public:
 
         auto index = free_head;
         auto bucket = get_bucket_index(index);
-        auto rel_index = get_relative_index(bucket, index);
+        auto rel_index = get_relative_index(index);
         storage* slot;
 
         if (index == back_index) {
             if (bucket == buckets.size()) {
-                auto bucket_size = get_bucket_size(bucket);
                 buckets.push_back(std::make_unique<storage[]>(bucket_size));
-                comid_to_entid.resize(comid_to_entid.size() + bucket_size, -1);
+                comid_to_entid.resize(comid_to_entid.size() + bucket_size, null_id);
             }
 
             slot = &buckets[bucket][rel_index];
@@ -605,19 +598,19 @@ public:
     virtual void remove(size_type entid) override final {
         auto index = entid_to_comid[entid];
         auto bucket = get_bucket_index(index);
-        auto rel_index = get_relative_index(bucket, index);
+        auto rel_index = get_relative_index(index);
         auto& slot = buckets[bucket][rel_index];
 
         slot.component.~T();
         slot.next_free = free_head;
         free_head = index;
-        comid_to_entid[index] = -1;
+        comid_to_entid[index] = null_id;
 
         set_count(get_count() - 1);
     }
 
     bool is_valid(size_type comid) const {
-        return comid_to_entid[comid] != -1;
+        return comid_to_entid[comid] != null_id;
     }
 
     size_type get_comid(size_type entid) const {
@@ -626,7 +619,7 @@ public:
 
     T& get_com(size_type comid) {
         auto bucket = get_bucket_index(comid);
-        auto rel_index = get_relative_index(bucket, comid);
+        auto rel_index = get_relative_index(comid);
         auto& slot = buckets[bucket][rel_index];
         return slot.component;
     }
@@ -655,21 +648,18 @@ private:
     size_type back_index = 0;
 
     static constexpr size_type bucket_size = 4096 * 8;
+    static constexpr size_type null_id = static_cast<size_type>(-1);
 
     static size_type get_bucket_index(size_type idx) {
         return idx / bucket_size;
     }
 
-    static size_type get_relative_index(size_type bucket, size_type idx) {
+    static size_type get_relative_index(size_type idx) {
         return idx % bucket_size;
     }
 
     static size_type get_total_size(size_type num_buckets) {
         return num_buckets * bucket_size;
-    }
-
-    static size_type get_bucket_size(size_type bucket) {
-        return bucket_size;
     }
 };
 
@@ -677,7 +667,7 @@ template <typename T>
 class component_set_impl<tag<T>> final : public component_set {
 public:
     virtual ~component_set_impl() = default;
-    virtual void remove(size_type entid) override final {}
+    virtual void remove([[maybe_unused]] size_type entid) override final {}
 };
 
 // Opaque index
@@ -850,7 +840,7 @@ public:
      * @param com Tag value.
      */
     template <typename T>
-    void add_component(ent_id eid, tag<T> com) {
+    void add_component(ent_id eid, tag<T>) {
         auto index = eid.get_index();
         auto guid = get_type_guid<tag<T>>();
         auto& ent_coms = entities[index].components;
@@ -902,12 +892,12 @@ public:
     /*! Get a component.
      *
      * If Com is a non-pointer type, returns a reference to the component without performing safe checks for existence.
-     * 
+     *
      * Otherwise, if Com is a pointer type,
      * returns a pointer to the component of the pointed-to type that is associated with the given entity.
-     * 
+     *
      * If the entity has no associated component of the given type, returns nullptr.
-     * 
+     *
      * If the entity does not exist, returns nullptr.
      *
      * @tparam Com Type of the component to get.
@@ -1045,7 +1035,7 @@ public:
      *          Do not ever dereference the pointer.
      *          Entity version checking is not preserved through conversion to and from pointers.
      *          Null pointers are a valid result.
-     * 
+     *
      * @param eid Entity ID to convert to a pointer.
      * @return A pointer which may be converted back into the same ID using from_ptr(ptr).
      */
@@ -1057,7 +1047,7 @@ public:
     /*! Converts a void* to an ent_id. The pointer must have been returned from to_ptr(eid).
      *
      * @warning The entity must not have been deleted. Version checking is not applied.
-     * 
+     *
      * @param ptr Pointer which was obtained from to_ptr(eid).
      * @return The original ent_id that was passed to to_ptr(eid).
      */

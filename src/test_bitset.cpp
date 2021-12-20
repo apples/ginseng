@@ -10,7 +10,7 @@ TEST_CASE("dynamic_bitset is initialized to zero", "[dynamic_bitset]") {
 
     REQUIRE(db.size() == word_size);
 
-    for (int i = 0; i < word_size; ++i) {
+    for (auto i = 0u; i < word_size; ++i) {
         REQUIRE(db.get(i) == false);
     }
 
@@ -23,7 +23,7 @@ TEST_CASE("setting an existing bit does not change size", "[dynamic_bitset]") {
 
         REQUIRE(db.size() == word_size);
 
-        for (int i = 0; i < word_size; ++i) {
+        for (auto i = 0u; i < word_size; ++i) {
             REQUIRE(db.get(i) == false);
             db.set(i);
             REQUIRE(db.get(i) == true);
@@ -38,7 +38,7 @@ TEST_CASE("setting an existing bit does not change size", "[dynamic_bitset]") {
 
         REQUIRE(db.size() == word_size * 2);
 
-        for (int i = 0; i < word_size * 2; ++i) {
+        for (auto i = 0u; i < word_size * 2; ++i) {
             REQUIRE(db.get(i) == false);
             db.set(i);
             REQUIRE(db.get(i) == true);
@@ -91,11 +91,11 @@ TEST_CASE("unsetting a bit past the end has no effect", "[dynamic_bitset]") {
 TEST_CASE("zero works", "[dynamic_bitset]") {
     dynamic_bitset db;
 
-    for (int i = 0; i < word_size; ++i) {
+    for (auto i = 0u; i < word_size; ++i) {
         db.set(i);
     }
 
-    for (int i = 0; i < word_size; ++i) {
+    for (auto i = 0u; i < word_size; ++i) {
         REQUIRE(db.get(i) == true);
     }
 
@@ -103,15 +103,15 @@ TEST_CASE("zero works", "[dynamic_bitset]") {
 
     REQUIRE(db.size() == word_size);
 
-    for (int i = 0; i < word_size; ++i) {
+    for (auto i = 0u; i < word_size; ++i) {
         REQUIRE(db.get(i) == false);
     }
 
-    for (int i = 0; i < word_size * 2; ++i) {
+    for (auto i = 0u; i < word_size * 2; ++i) {
         db.set(i);
     }
 
-    for (int i = 0; i < word_size * 2; ++i) {
+    for (auto i = 0u; i < word_size * 2; ++i) {
         REQUIRE(db.get(i) == true);
     }
 
@@ -119,7 +119,7 @@ TEST_CASE("zero works", "[dynamic_bitset]") {
 
     REQUIRE(db.size() == word_size * 2);
 
-    for (int i = 0; i < word_size * 2; ++i) {
+    for (auto i = 0u; i < word_size * 2; ++i) {
         REQUIRE(db.get(i) == false);
     }
 }
@@ -156,7 +156,7 @@ TEST_CASE("setting bits under the word size does not disable sdo", "[dynamic_bit
 
     REQUIRE(db.using_sdo());
 
-    for (int i = 0; i < word_size; ++i) {
+    for (auto i = 0u; i < word_size; ++i) {
         db.set(i);
         REQUIRE(db.using_sdo() == true);
     }

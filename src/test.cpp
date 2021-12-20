@@ -247,7 +247,7 @@ TEST_CASE("deleted entites are not revisited", "[ginseng]")
     REQUIRE(visited == 3);
 
     visited = 0;
-    db.visit([&](ent_id eid, Data&){
+    db.visit([&](ent_id, Data&){
         ++visited;
     });
     REQUIRE(visited == 3);
@@ -255,13 +255,13 @@ TEST_CASE("deleted entites are not revisited", "[ginseng]")
     db.destroy_entity(ent);
 
     visited = 0;
-    db.visit([&](ent_id eid){
+    db.visit([&](ent_id){
         ++visited;
     });
     REQUIRE(visited == 2);
 
     visited = 0;
-    db.visit([&](ent_id eid, Data&){
+    db.visit([&](ent_id, Data&){
         ++visited;
     });
     REQUIRE(visited == 2);

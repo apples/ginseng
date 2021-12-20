@@ -19,6 +19,12 @@ add_executable(test_ginseng EXCLUDE_FROM_ALL
 set_property(TARGET test_ginseng PROPERTY CXX_STANDARD 17)
 target_link_libraries(test_ginseng ginseng)
 
+if (MSVC)
+    target_compile_options(test_ginseng PUBLIC /W4 /WX)
+else()
+    target_compile_options(test_ginseng PUBLIC -Wall -Wextra -pedantic -Werror)
+endif()
+
 if(GINSENG_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
