@@ -387,7 +387,6 @@ struct database_traits {
         using com_t = typename component_traits<Com>::component;
 
         bool check(DB& db, ent_id eid) const {
-            int i = 0;
             return (check<Coms>(db, eid, get_guid(index_of_v<com_t<Coms>, com_t<Coms>...>), tag_t<Coms>{}) && ...);
         }
 

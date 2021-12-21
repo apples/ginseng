@@ -1,6 +1,6 @@
-#include "catch.hpp"
-
 #include <ginseng/ginseng.hpp>
+
+#include "catch.hpp"
 
 using dynamic_bitset = ginseng::_detail::dynamic_bitset;
 constexpr auto word_size = dynamic_bitset::word_size;

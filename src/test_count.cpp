@@ -1,6 +1,6 @@
-#include "catch.hpp"
-
 #include <ginseng/ginseng.hpp>
+
+#include "catch.hpp"
 
 using DB = ginseng::database;
 using ginseng::deny;

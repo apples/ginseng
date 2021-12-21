@@ -1,6 +1,6 @@
-#include "catch.hpp"
-
 #include <ginseng/ginseng.hpp>
+
+#include "catch.hpp"
 
 using DB = ginseng::database;
 using ginseng::deny;
@@ -44,7 +44,7 @@ TEST_CASE("tag types do not use dynamic allocation", "[ginseng]")
     });
     REQUIRE(visited == 1);
     REQUIRE(bool(minfo) == true);
-    
+
     optional<tag<Sometag2>> minfo2;
     visited = 0;
     db.visit([&](optional<tag<Sometag2>> info){
